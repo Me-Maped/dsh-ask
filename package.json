@@ -1,0 +1,71 @@
+{
+  "name": "@dsh-local/dsh-ask",
+  "version": "0.2.0",
+  "description": "Lightweight terminal-scoped streaming ask mode for DeepSeek Harness",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "bin": {
+    "dsh-ask": "./lib/bin/dsh-ask.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./startup": {
+      "types": "./lib/startup.d.ts",
+      "default": "./lib/startup.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "docs",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "rimraf lib tsconfig.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "pnpm run clean && tsc -p tsconfig.json && node scripts/copy-shell-templates.mjs && node -e \"import { chmodSync } from 'node:fs'; chmodSync('lib/bin/dsh-ask.js', 0o755)\"",
+    "test": "pnpm run build && node --test test/dsh-ask-cli.test.mjs",
+    "prepack": "pnpm run build"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0 <5.0.0",
+    "@deepseek-ai/cordis-plugin-loader": ">=1.0.0 <2.0.0",
+    "@deepseek-ai/dsh-agent": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/dsh-agent-default-model": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/dsh-cmdline": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/dsh-llm": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/dsh-session": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/schemastery": ">=3.18.0 <4.0.0"
+  },
+  "dependencies": {
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0 <5.0.0",
+    "@deepseek-ai/cordis-plugin-loader": ">=1.0.0 <2.0.0",
+    "@deepseek-ai/dsh-agent": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/dsh-agent-default-model": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/dsh-cmdline": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/dsh-llm": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/dsh-session": ">=0.1.0-rc.5 <0.2.0",
+    "@deepseek-ai/schemastery": ">=3.18.0 <4.0.0",
+    "@types/node": "^22.20.0",
+    "rimraf": "^6.1.2",
+    "typescript": "^6.0.3"
+  }
+}
