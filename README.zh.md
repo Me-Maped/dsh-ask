@@ -56,6 +56,12 @@ source ~/.config/fish/conf.d/zz-dsh-ask.fish
 command dsh --profile $DSH_ASK_PROFILE -- $text
 ```
 
+下图展示未知 Fish 命令被转为提问后的回答，以及后续问题复用同一终端会话的过程。
+
+![Fish 将未知命令转交给 dsh-ask](doc/fish_01.png)
+
+![Fish 后续提问复用终端会话](doc/fish_02.png)
+
 `DSH_ASK_PROFILE` 默认是 `ask`；在启动 Fish 前设置它可使用其他 profile。生成的 wrapper 会保留原来的 `fish_command_not_found`，只在找不到 `dsh` 时回退。初始化程序不会覆盖一个不是它生成的同名文件。
 
 ### Bash

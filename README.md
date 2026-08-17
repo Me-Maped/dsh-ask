@@ -54,6 +54,12 @@ New Fish shells load the generated `conf.d/zz-dsh-ask.fish` file automatically. 
 command dsh --profile $DSH_ASK_PROFILE -- $text
 ```
 
+The screenshots below show an unknown Fish command being answered, followed by a question that resumes the same terminal-scoped conversation.
+
+![Fish routes an unknown command to dsh-ask](doc/fish_01.png)
+
+![Fish follow-up reuses the terminal-scoped session](doc/fish_02.png)
+
 `DSH_ASK_PROFILE` defaults to `ask`; set it before starting Fish to use another profile name. The generated wrapper preserves a pre-existing `fish_command_not_found` handler as a fallback when `dsh` is unavailable. The installer refuses to overwrite a same-named file that it did not generate.
 
 ### Bash

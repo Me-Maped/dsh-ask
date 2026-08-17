@@ -8,6 +8,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
+import { createProgress, type StatusStream } from './progress.js'
 import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { ModelSelectionRef } from '@deepseek-ai/dsh-agent'
@@ -52,11 +53,6 @@ interface OutputStream {
   write(chunk: string): unknown
 }
 
-/** Writable stream that can report interactive-terminal support. */
-interface StatusStream extends OutputStream {
-  isTTY?: boolean
-}
-
 /** Process-facing effects of one run. */
 interface AskIo {
   stdout: OutputStream
@@ -70,9 +66,6 @@ export const internals: { stdout: OutputStream; stderr: StatusStream } = {
   stdout: process.stdout,
   stderr: process.stderr,
 }
-
-/** Frames rendered only while an interactive terminal is waiting. */
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 /** Aggregate the final assistant text and terminal reason in one turn interval. */
 function summarize(events: readonly SessionEvent[], firstSeq: number): RunOutcome {
@@ -96,41 +89,6 @@ function summarize(events: readonly SessionEvent[], firstSeq: number): RunOutcom
     if (event.type === 'turn/end') reason = event.data.reason
   }
   return { text, reason }
-}
-
-/** Render terminal lifecycle status without exposing private model reasoning. */
-function createProgress(io: AskIo): { start(message: string): void; update(message: string): void; stop(): void } {
-  const interactive = io.stderr.isTTY === true
-  let message = ''
-  let frame = 0
-  let timer: NodeJS.Timeout | undefined
-
-  const render = (): void => {
-    if (interactive) {
-      io.stderr.write(`\r\x1b[2K${SPINNER_FRAMES[frame]} dsh-ask · ${message}`)
-      frame = (frame + 1) % SPINNER_FRAMES.length
-      return
-    }
-    io.stderr.write(`dsh-ask · ${message}\n`)
-  }
-
-  return {
-    start(next) {
-      message = next
-      render()
-      if (interactive) timer = setInterval(render, 100)
-    },
-    update(next) {
-      if (next === message) return
-      message = next
-      render()
-    },
-    stop() {
-      if (timer !== undefined) clearInterval(timer)
-      timer = undefined
-      if (interactive) io.stderr.write('\r\x1b[2K')
-    },
-  }
 }
 
 /** Convert one durable event into a truthful terminal lifecycle label. */
@@ -165,7 +123,7 @@ function defaultSessionId(cwd: string): SessionId {
 
 /** Create or resume the selected session, run one question, persist it, and exit. */
 async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
-  const progress = createProgress(io)
+  const progress = createProgress(io.stderr)
   let stopEvents: (() => void) | undefined
   let streamedText = false
   let streamEndsWithNewline = false
