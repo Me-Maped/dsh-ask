@@ -22,6 +22,25 @@ A completed `tool/call` creates a separate **operation** row. It shows the tool 
 
 Visible assistant `text-delta` content continues to stream unchanged to stdout; the first such chunk removes the transient spinner. If a later step reasons or calls a tool after visible text has started, its permanent row is placed on a separate TTY line rather than being dropped or written into the answer line. Activity stays on stderr, so `dsh ... > answer.txt` still writes only the answer. If a provider supplies no visible chunks, dsh-ask falls back to printing the completed assistant message after the turn ends.
 
+### Style presets
+
+`outputStyle` defaults to `auto`. Set `DSH_ASK_STYLE` for one machine, or override the `ask-runner` row in a later profile `cordis.patch.yml` for a persistent profile setting:
+
+```yaml
+- id: ask-runner
+  config:
+    outputStyle: plain
+```
+
+| Preset | Behavior |
+| --- | --- |
+| `auto` | Default TTY spinner, dim/italic gray thinking, and bold cyan operations. |
+| `plain` | Line-oriented output only: no color, SGR, cursor clearing, or spinner animation. Recommended for older terminals, remote consoles, and strict logs. |
+| `subtle` | Uses only standard dim/bold emphasis, without color or italics. |
+| `contrast` | Keeps muted thinking and uses bright yellow operations for high visibility. |
+
+`NO_COLOR` still disables SGR color/style in the styled presets; use `plain` when terminal control sequences themselves are incompatible.
+
 ## Commands
 
 ```sh

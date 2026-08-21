@@ -33,3 +33,5 @@
         task: !!js ctx.askStartup.task
         fresh: !!js ctx.askStartup.fresh
         explicitSession: !!js ctx.askStartup.session
+        # Override with DSH_ASK_STYLE or a later ask-runner profile patch.
+        outputStyle: !!js process.env.DSH_ASK_STYLE ?? 'auto'

@@ -8,7 +8,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import { createProgress, formatToolCall, type StatusStream } from './progress.js'
+import { createProgress, formatToolCall, type OutputStyle, type StatusStream } from './progress.js'
 import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { ModelSelectionRef } from '@deepseek-ai/dsh-agent'
@@ -33,6 +33,8 @@ export interface Config {
   fresh: boolean
   /** Explicit persisted conversation to resume. */
   explicitSession?: string
+  /** Native-terminal presentation preset. */
+  outputStyle: OutputStyle
 }
 
 /** Runtime validator for {@link Config}. */
@@ -40,6 +42,7 @@ export const Config: z<Config> = z.object({
   task: z.string().required(),
   fresh: z.boolean().default(false),
   explicitSession: z.string(),
+  outputStyle: z.union(['auto', 'plain', 'subtle', 'contrast']).default('auto'),
 })
 
 /** Outcome of the turn interval owned by this invocation. */
@@ -128,10 +131,13 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
   let streamedText = false
   let streamEndsWithNewline = false
   let terminalAnswerLineOpen = false
-  const progress = createProgress(io.stderr, () => {
-    if (!terminalAnswerLineOpen || io.stdout.isTTY !== true || io.stderr.isTTY !== true) return
-    io.stderr.write('\n')
-    terminalAnswerLineOpen = false
+  const progress = createProgress(io.stderr, {
+    style: config.outputStyle,
+    beforeActivity: () => {
+      if (!terminalAnswerLineOpen || io.stdout.isTTY !== true || io.stderr.isTTY !== true) return
+      io.stderr.write('\n')
+      terminalAnswerLineOpen = false
+    },
   })
   progress.start('正在准备持久会话…')
   try {

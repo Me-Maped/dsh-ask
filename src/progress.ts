@@ -4,6 +4,18 @@ export interface StatusStream {
   isTTY?: boolean
 }
 
+/** Supported native-terminal output presets. */
+export const OUTPUT_STYLES = ['auto', 'plain', 'subtle', 'contrast'] as const
+export type OutputStyle = typeof OUTPUT_STYLES[number]
+
+/** Options that affect terminal-only rendering, never stdout answer content. */
+export interface ProgressOptions {
+  /** Called immediately before a durable activity row is written. */
+  beforeActivity?: () => void
+  /** Native-terminal presentation preset; `plain` avoids terminal control sequences. */
+  style?: OutputStyle
+}
+
 /** Lifecycle and activity controls for terminal progress output. */
 export interface Progress {
   start(message: string): void
@@ -24,10 +36,24 @@ const MAX_OPERATION_CHARS = 180
 const MAX_TOOL_NAME_CHARS = 48
 const ANSI = {
   reset: '\x1b[0m',
+  dim: '\x1b[2m',
+  gray: '\x1b[2;90m',
   thinking: '\x1b[2;3;90m',
-  status: '\x1b[2;90m',
-  operation: '\x1b[1;36m',
+  cyan: '\x1b[1;36m',
+  yellow: '\x1b[1;93m',
+  bold: '\x1b[1m',
 } as const
+
+/** ANSI choices deliberately stay within broadly supported SGR sequences. */
+const STYLE_PRESETS: Record<Exclude<OutputStyle, 'plain'>, {
+  status: string
+  thinking: string
+  operation: string
+}> = {
+  auto: { status: ANSI.gray, thinking: ANSI.thinking, operation: ANSI.cyan },
+  subtle: { status: ANSI.dim, thinking: ANSI.dim, operation: ANSI.bold },
+  contrast: { status: ANSI.gray, thinking: ANSI.gray, operation: ANSI.yellow },
+}
 
 /** Collapse control characters so model-provided activity cannot control the terminal. */
 function inline(value: string): string {
@@ -84,9 +110,11 @@ export function formatToolCall(name: string, argumentsJson: string): string {
 }
 
 /** Render terminal lifecycle status and compact activity rows. */
-export function createProgress(stderr: StatusStream, beforeActivity?: () => void): Progress {
-  const interactive = stderr.isTTY === true
+export function createProgress(stderr: StatusStream, options: ProgressOptions = {}): Progress {
+  const { beforeActivity, style = 'auto' } = options
+  const interactive = stderr.isTTY === true && style !== 'plain'
   const styled = interactive && process.env.NO_COLOR === undefined
+  const preset = STYLE_PRESETS[style === 'plain' ? 'auto' : style]
   let message = ''
   let frame = 0
   let timer: NodeJS.Timeout | undefined
@@ -104,7 +132,7 @@ export function createProgress(stderr: StatusStream, beforeActivity?: () => void
     if (!active) return
     if (interactive) {
       const row = `${SPINNER_FRAMES[frame]} dsh-ask · ${message}`
-      stderr.write(`\r\x1b[2K${styled ? `${ANSI.status}${row}${ANSI.reset}` : row}`)
+      stderr.write(`\r\x1b[2K${styled ? `${preset.status}${row}${ANSI.reset}` : row}`)
       spinnerVisible = true
       frame = (frame + 1) % SPINNER_FRAMES.length
       return
@@ -123,7 +151,7 @@ export function createProgress(stderr: StatusStream, beforeActivity?: () => void
     const text = inline(value)
     if (text === '') return
     const row = `  思考 · ${shorten(text, MAX_THINKING_CHARS)}`
-    writeActivity(`${styled ? `${ANSI.thinking}${row}${ANSI.reset}` : row}\n`)
+    writeActivity(`${styled ? `${preset.thinking}${row}${ANSI.reset}` : row}\n`)
   }
 
   const flushThinking = (): void => {
@@ -174,7 +202,7 @@ export function createProgress(stderr: StatusStream, beforeActivity?: () => void
     flushThinking,
     operation(next) {
       const row = `▶ 执行 · ${inline(next) || 'tool'}`
-      writeActivity(`${styled ? `${ANSI.operation}${row}${ANSI.reset}` : row}\n`)
+      writeActivity(`${styled ? `${preset.operation}${row}${ANSI.reset}` : row}\n`)
     },
     stop,
   }

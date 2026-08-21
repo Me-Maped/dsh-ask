@@ -22,6 +22,25 @@ dsh --profile ask "这个函数做什么？"
 
 可见 assistant `text-delta` 仍原样流式写入 stdout，首个可见 chunk 到达时会清除临时 spinner。如果可见文本开始后，后续步骤又继续思考或调用工具，其持久行会放在独立的 TTY 行中，不会被丢弃或写进未结束的回答行。活动信息始终走 stderr，因此 `dsh ... > answer.txt` 仍只会写入回答。如果某个 provider 不提供可见 chunk，则在 turn 结束后回退为一次性输出完整 assistant 消息。
 
+### 样式预设
+
+`outputStyle` 默认是 `auto`。单台机器可设置 `DSH_ASK_STYLE`；如需让一个 profile 持久使用某个预设，请在该 profile 后续的 `cordis.patch.yml` 覆盖 `ask-runner`：
+
+```yaml
+- id: ask-runner
+  config:
+    outputStyle: plain
+```
+
+| 预设 | 行为 |
+| --- | --- |
+| `auto` | 默认 TTY spinner；思考为灰色淡化/斜体，执行为粗体青色。 |
+| `plain` | 仅输出普通行：不使用颜色、SGR、光标清除或 spinner 动画。适合旧终端、远程控制台和严格日志环境。 |
+| `subtle` | 只使用标准的淡化/粗体强调，不使用颜色或斜体。 |
+| `contrast` | 保留低调的思考样式，并用亮黄色突出执行操作。 |
+
+`NO_COLOR` 仍可关闭带样式预设中的 SGR 颜色/字体样式；如果终端连控制序列都不兼容，请使用 `plain`。
+
 ## 命令
 
 ```sh

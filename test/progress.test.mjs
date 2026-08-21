@@ -51,7 +51,7 @@ test('interactive thinking and operations have distinct native terminal styles',
 
 test('activity can request a line boundary before a later answer-side operation', () => {
   const { writes, stream } = capture(true)
-  const progress = createProgress(stream, () => { writes.push('\n') })
+  const progress = createProgress(stream, { beforeActivity: () => { writes.push('\n') } })
 
   progress.start('正在思考…')
   progress.stop()
@@ -83,6 +83,41 @@ test('non-interactive progress keeps activity readable without terminal controls
   ])
   assert.doesNotMatch(writes.join(''), /\x1b|\r/)
 })
+
+test('plain preset avoids ANSI styling, cursor control, and spinner animation on a TTY', () => {
+  const { writes, stream } = capture(true)
+  const progress = createProgress(stream, { style: 'plain' })
+
+  progress.start('正在思考…')
+  progress.appendThinking('检查兼容性\n')
+  progress.operation('bash $ git status --short')
+  progress.stop()
+
+  assert.deepEqual(writes, [
+    'dsh-ask · 正在思考…\n',
+    '  思考 · 检查兼容性\n',
+    '▶ 执行 · bash $ git status --short\n',
+  ])
+})
+
+test('subtle and contrast presets select their documented ANSI emphasis', () => {
+  const subtle = capture(true)
+  const subtleProgress = createProgress(subtle.stream, { style: 'subtle' })
+  subtleProgress.start('正在思考…')
+  subtleProgress.appendThinking('检查事件流\n')
+  subtleProgress.operation('bash $ git status --short')
+  subtleProgress.stop()
+  assert.match(subtle.writes.join(''), /\x1b\[2m  思考 · 检查事件流\x1b\[0m\n/)
+  assert.match(subtle.writes.join(''), /\x1b\[1m▶ 执行 · bash \$ git status --short\x1b\[0m\n/)
+
+  const contrast = capture(true)
+  const contrastProgress = createProgress(contrast.stream, { style: 'contrast' })
+  contrastProgress.start('正在思考…')
+  contrastProgress.operation('bash $ git status --short')
+  contrastProgress.stop()
+  assert.match(contrast.writes.join(''), /\x1b\[1;93m▶ 执行 · bash \$ git status --short\x1b\[0m\n/)
+})
+
 
 test('tool-call previews are compact, sanitized, and tolerate malformed JSON', () => {
   assert.equal(
@@ -179,12 +214,12 @@ test('runner emits later thinking and tool rows on a separate TTY line', { timeo
   }
 
   try {
-    apply(ctx, { task: 'test', fresh: false, explicitSession: 'stream-test' })
+    apply(ctx, { task: 'test', fresh: false, explicitSession: 'stream-test', outputStyle: 'contrast' })
     assert.equal(await exited, 0)
     assert.deepEqual(stdout, ['Draft', ' complete', '\n'])
     const activity = stderr.join('')
-    assert.match(activity, /\n\x1b\[2;3;90m  思考 · Checking again\x1b\[0m\n/)
-    assert.match(activity, /\x1b\[1;36m▶ 执行 · bash \$ git status --short\x1b\[0m\n/)
+    assert.match(activity, /\n\x1b\[2;90m  思考 · Checking again\x1b\[0m\n/)
+    assert.match(activity, /\x1b\[1;93m▶ 执行 · bash \$ git status --short\x1b\[0m\n/)
     assert.ok(activity.indexOf('思考 · Checking again') < activity.indexOf('▶ 执行 · bash'))
   } finally {
     internals.stdout = previousStdout
