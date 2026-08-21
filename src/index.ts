@@ -8,7 +8,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import { createProgress, type StatusStream } from './progress.js'
+import { createProgress, formatToolCall, type StatusStream } from './progress.js'
 import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { ModelSelectionRef } from '@deepseek-ai/dsh-agent'
@@ -51,6 +51,7 @@ interface RunOutcome {
 /** Narrow writable stream interface used by this command. */
 interface OutputStream {
   write(chunk: string): unknown
+  isTTY?: boolean
 }
 
 /** Process-facing effects of one run. */
@@ -96,7 +97,7 @@ function activityFor(event: SessionEvent): string | undefined {
   switch (event.type) {
     case 'turn/start': return '正在思考…'
     case 'step/start': return '正在分析问题…'
-    case 'assistant/chunk': return '正在生成回答…'
+    case 'assistant/chunk': return event.data.chunk.type === 'text-delta' ? '正在生成回答…' : undefined
     case 'tool/call': return `正在调用工具：${event.data.name}`
     case 'tool/result': return '正在整理工具结果…'
     default: return undefined
@@ -123,10 +124,15 @@ function defaultSessionId(cwd: string): SessionId {
 
 /** Create or resume the selected session, run one question, persist it, and exit. */
 async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
-  const progress = createProgress(io.stderr)
   let stopEvents: (() => void) | undefined
   let streamedText = false
   let streamEndsWithNewline = false
+  let terminalAnswerLineOpen = false
+  const progress = createProgress(io.stderr, () => {
+    if (!terminalAnswerLineOpen || io.stdout.isTTY !== true || io.stderr.isTTY !== true) return
+    io.stderr.write('\n')
+    terminalAnswerLineOpen = false
+  })
   progress.start('正在准备持久会话…')
   try {
     await ctx.get('loader')?.await()
@@ -166,20 +172,44 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
       if (subject !== handle.agent || status !== 'running' || streamedText) return
       progress.update('正在思考…')
     }, { global: true })
+    const reasoningChunks = new Set<string>()
     const stopSessionEvents = ctx.on('session/event', (subject, event) => {
       if (subject !== handle.agent.session) return
-      if (event.type === 'assistant/chunk' && event.data.chunk.type === 'text-delta') {
-        const text = event.data.chunk.text
-        if (text === '') return
-        if (!streamedText) {
-          streamedText = true
-          progress.stop()
+      if (event.type === 'assistant/chunk') {
+        const chunk = event.data.chunk
+        if (chunk.type === 'text-delta') {
+          const text = chunk.text
+          if (text === '') return
+          if (!streamedText) {
+            streamedText = true
+            progress.flushThinking()
+            progress.stop()
+          }
+          io.stdout.write(text)
+          streamEndsWithNewline = text.endsWith('\n')
+          terminalAnswerLineOpen = !streamEndsWithNewline
+          return
         }
-        io.stdout.write(text)
-        streamEndsWithNewline = text.endsWith('\n')
-        return
+        if (chunk.type === 'reasoning-delta') {
+          if (chunk.text !== '') {
+            reasoningChunks.add(`${event.data.turn}:${event.data.step}:${chunk.index}`)
+            progress.appendThinking(chunk.text)
+          }
+          return
+        }
+        if (chunk.type === 'block-end' && chunk.block.type === 'reasoning') {
+          if (!reasoningChunks.delete(`${event.data.turn}:${event.data.step}:${chunk.index}`) && chunk.block.text !== '') {
+            progress.appendThinking(chunk.block.text)
+          }
+          progress.flushThinking()
+          return
+        }
       }
-      if (streamedText) return
+      if (event.type === 'tool/call') {
+        progress.flushThinking()
+        progress.operation(formatToolCall(event.data.name, event.data.arguments))
+      }
+      if (event.type === 'step/end' || event.type === 'turn/end') progress.flushThinking()
       const activity = activityFor(event)
       if (activity !== undefined) progress.update(activity)
     }, { global: true })
@@ -195,6 +225,7 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
       source: { kind: 'user' },
     }))
     await handle.agent.whenIdle()
+    progress.flushThinking()
     if (!streamedText) progress.update('正在保存会话历史…')
     await sessions.flush(handle.agent.session)
     const outcome = summarize(handle.agent.session.events, firstSeq)
@@ -210,6 +241,7 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
     io.exit(outcome.reason?.kind === 'completed' ? 0 : 1)
   } finally {
     stopEvents?.()
+    progress.flushThinking()
     progress.stop()
   }
 }

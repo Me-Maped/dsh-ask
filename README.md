@@ -16,7 +16,11 @@ At the end of every turn the runner calls `sessions.flush()`. DSH therefore pers
 
 ## Terminal output
 
-While a terminal is waiting, dsh-ask renders a spinner on stderr with lifecycle labels such as **preparing session**, **thinking**, and **calling a tool**. When the first visible assistant `text-delta` arrives, the spinner stops and the answer streams directly to stdout. Only visible text deltas are rendered: the runner never prints `reasoning-delta` chunks or claims to expose private model chain-of-thought. If a provider supplies no visible chunks, dsh-ask falls back to printing the completed assistant message after the turn ends.
+While a terminal is waiting, dsh-ask renders a spinner on stderr with lifecycle labels such as **preparing session**, **thinking**, and **calling a tool**. Model `reasoning-delta` chunks are coalesced into compact, persistent **thinking** rows, so longer requests show meaningful progress before the final answer begins. Each row is whitespace-normalized and bounded rather than printed token by token.
+
+A completed `tool/call` creates a separate **operation** row. It shows the tool plus the useful part of its final arguments: shell tools show the command, file tools show the path, and search tools show the pattern and path. Tool results are not dumped to the terminal. In an interactive terminal, thinking rows use the terminal's native dim/italic gray SGR style; operation rows use bold cyan. No font is bundled or resized. When stderr is redirected, both forms are plain line-oriented text without ANSI styling (and `NO_COLOR` disables color in a TTY).
+
+Visible assistant `text-delta` content continues to stream unchanged to stdout; the first such chunk removes the transient spinner. If a later step reasons or calls a tool after visible text has started, its permanent row is placed on a separate TTY line rather than being dropped or written into the answer line. Activity stays on stderr, so `dsh ... > answer.txt` still writes only the answer. If a provider supplies no visible chunks, dsh-ask falls back to printing the completed assistant message after the turn ends.
 
 ## Commands
 

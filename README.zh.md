@@ -16,9 +16,11 @@ dsh --profile ask "这个函数做什么？"
 
 ## 终端输出
 
-等待时，dsh-ask 在 stderr 显示 spinner 和真实生命周期状态，例如“正在准备持久会话”“正在思考”“正在调用工具”。首个可见的 assistant `text-delta` 到达时，spinner 会停止，回答直接流式写入 stdout。
+等待时，dsh-ask 在 stderr 显示 spinner 和真实生命周期状态，例如“正在准备持久会话”“正在思考”“正在调用工具”。模型发出的 `reasoning-delta` 会被归并为简短、持久的“思考”行，因此复杂问题在最终回答开始前也能显示有意义的进度；内容会合并空白并限制单行长度，不会按 token 逐个刷屏。
 
-只有可见文本 `text-delta` 会输出：插件不会显示 `reasoning-delta`，也不会声称能展示模型的私有思维链。如果某个 provider 不提供可见 chunk，则在 turn 结束后回退为一次性输出完整 assistant 消息。
+完成的 `tool/call` 会输出单独的“执行”行。它会显示工具名和最终参数中最有用的部分：shell 工具显示命令，文件工具显示路径，搜索工具显示模式和路径；不会把工具结果全文输出到终端。交互式终端中，思考行使用终端原生的灰色、淡化/斜体 SGR 样式，执行行使用醒目的粗体青色；不会新增或调整字体。stderr 被重定向时，两类内容都是不带 ANSI 样式的普通行（TTY 中设置 `NO_COLOR` 也会关闭颜色）。
+
+可见 assistant `text-delta` 仍原样流式写入 stdout，首个可见 chunk 到达时会清除临时 spinner。如果可见文本开始后，后续步骤又继续思考或调用工具，其持久行会放在独立的 TTY 行中，不会被丢弃或写进未结束的回答行。活动信息始终走 stderr，因此 `dsh ... > answer.txt` 仍只会写入回答。如果某个 provider 不提供可见 chunk，则在 turn 结束后回退为一次性输出完整 assistant 消息。
 
 ## 命令
 
