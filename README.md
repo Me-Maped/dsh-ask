@@ -10,7 +10,7 @@
 dsh --profile ask "这个函数做什么？"
 ```
 
-默认会话由**绝对当前目录 + 当前父 shell**决定。同一终端、同一目录连续提问会恢复该终端的持久会话。即使目录相同，打开新终端也会得到一个新的默认会话。需要浏览或恢复旧会话时，请使用 Web 的会话界面。`--new` 为本次提问创建独立的持久会话；`--session <id>` 可指定一个持久会话。
+默认会话由**绝对当前目录 + 当前父 shell**决定。同一终端、同一目录连续提问会恢复该终端的持久会话。即使目录相同，打开新终端也会得到一个新的默认会话。需要浏览或恢复旧会话时，请使用 Web 的会话界面。`--new` 为本次提问创建独立的持久会话；`--session <id>` 可指定一个持久会话。`--model <id>` 和 `--effort <id>` 会修改 **dsh-ask 专用**的默认配置；之后的 ask 都使用这个选择，不会修改 DSH 的全局默认值。
 
 每个 turn 结束前，runner 都会执行 `sessions.flush()`。因此 DSH 的 canonical event log 会在进程退出前落盘。使用默认 JSONL 后端时，文件位于 `$DSH_HOME/sessions/<编码后的 cwd>/<session-id>/session.jsonl.zstd`（通常是 `~/.dsh/sessions/...`）。记录包含用户消息、完整 assistant 消息、工具调用/结果及 turn 边界；dsh-ask 不会再维护一份可能与 DSH 不一致的历史副本。
 
@@ -21,6 +21,48 @@ dsh --profile ask "这个函数做什么？"
 完成的 `tool/call` 会输出单独的“执行”行。它会显示工具名和最终参数中最有用的部分：shell 工具显示命令，文件工具显示路径，搜索工具显示模式和路径；不会把工具结果全文输出到终端。交互式终端中，思考行使用终端原生的灰色、淡化/斜体 SGR 样式，执行行使用醒目的粗体青色；不会新增或调整字体。stderr 被重定向时，两类内容都是不带 ANSI 样式的普通行（TTY 中设置 `NO_COLOR` 也会关闭颜色）。
 
 可见 assistant `text-delta` 仍原样流式写入 stdout，首个可见 chunk 到达时会清除临时 spinner。如果可见文本开始后，后续步骤又继续思考或调用工具，其持久行会放在独立的 TTY 行中，不会被丢弃或写进未结束的回答行。活动信息始终走 stderr，因此 `dsh ... > answer.txt` 仍只会写入回答。如果某个 provider 不提供可见 chunk，则在 turn 结束后回退为一次性输出完整 assistant 消息。
+
+### 模型与推理强度
+
+```sh
+# 查看所有已注册 provider，以及每个模型可用的 effort。
+dsh --profile ask --provider
+
+# 只查看一个 provider（使用等号避免它吞掉后面的提问文本）。
+dsh --profile ask --provider=deepseek
+
+# 只保存 ask 默认模型并显示当前激活配置，不会发起聊天。
+dsh --profile ask --model=deepseek-chat
+
+# 保存默认模型后立刻提问。
+dsh --profile ask --model deepseek-chat "快速解释这段代码"
+
+# 只保存 ask 默认的 reasoning effort。
+dsh --profile ask --effort=high
+```
+
+默认配置保存在 `$DSH_HOME/ask/config.json`（未设置 `DSH_HOME` 时为 `~/.dsh/ask/config.json`），且仅影响 `dsh-ask`。每次 ask 都先读取此文件，再以配置的 DSH 默认 provider 发起请求；它不会修改 Web、TUI 或其他 profile 的模型设置。写入采用原子替换，因此无效模型或不支持的 effort 不会覆盖原有可用配置。未提供提问文本时，`--model=<id>`、`--effort=<id>`（或两者同时使用）只保存配置，不会发起聊天，并会输出当前激活的 provider、model 和 effort。
+
+`--provider` 不带值时列出所有已注册 provider；`--provider=<id>` 仅列出指定 provider。输出包含模型 id 以及模型支持的原始 effort id、名称和默认项。列表命令不会发起聊天，也不会写默认配置。
+
+`--effort` 是 provider/model 暴露的原始 id，不是固定的 `low`/`high` 枚举。DSH 会在保存前按当前 provider 和最终 model 校验组合。仅传 `--model` 时，会清除已保存的 effort，让新模型使用 provider 默认值，避免把仅适用于旧模型的 id 带入新模型；在同一命令中同时传 `--model` 和 `--effort` 则会同时保存两项。
+
+### 语言
+
+`dsh-ask` 只支持中文（`zh`）和英文（`en`），默认使用 `zh`。语言会保存在 ask 专用默认配置中，优先级为命令行 `--lang`、保存的默认值、`zh`。
+
+```sh
+# 保存英文输出为 ask 默认语言；不发起聊天。
+dsh --profile ask --lang=en
+
+# 仅本次帮助按英文显示，不写入配置。
+dsh --profile ask --lang=en --help
+
+# 保存英文并立即用它提问。
+dsh --profile ask --lang en "Explain this code"
+```
+
+语言影响 `--help`、配置成功信息、provider/model/effort 查询、spinner、思考与工具活动行，以及 ask 自己的参数提示。模型回答和 provider/DSH 返回的原始错误不会被翻译。
 
 ### 样式预设
 
@@ -52,6 +94,9 @@ dsh --profile ask --new "调查一个无关问题"
 
 # 恢复或创建一个指定 id 的持久会话。
 dsh --profile ask --session refactor-auth "继续重构"
+
+# 保存默认模型和推理强度，并以它们提问。
+dsh --profile ask -m deepseek-reasoner -e high "审查这个设计"
 ```
 
 `DSH_ASK_SESSION` 是可选环境变量，供包装脚本需要稳定、隔离的默认会话 id 时使用。

@@ -9,11 +9,20 @@ export const OUTPUT_STYLES = ['auto', 'plain', 'subtle', 'contrast'] as const
 export type OutputStyle = typeof OUTPUT_STYLES[number]
 
 /** Options that affect terminal-only rendering, never stdout answer content. */
+export interface ProgressLabels {
+  /** Heading for compact reasoning rows. */
+  thought: string
+  /** Heading for completed tool-call rows. */
+  operation: string
+}
+
 export interface ProgressOptions {
   /** Called immediately before a durable activity row is written. */
   beforeActivity?: () => void
   /** Native-terminal presentation preset; `plain` avoids terminal control sequences. */
   style?: OutputStyle
+  /** Localized durable-activity labels. */
+  labels?: ProgressLabels
 }
 
 /** Lifecycle and activity controls for terminal progress output. */
@@ -111,7 +120,7 @@ export function formatToolCall(name: string, argumentsJson: string): string {
 
 /** Render terminal lifecycle status and compact activity rows. */
 export function createProgress(stderr: StatusStream, options: ProgressOptions = {}): Progress {
-  const { beforeActivity, style = 'auto' } = options
+  const { beforeActivity, style = 'auto', labels = { thought: '思考', operation: '执行' } } = options
   const interactive = stderr.isTTY === true && style !== 'plain'
   const styled = interactive && process.env.NO_COLOR === undefined
   const preset = STYLE_PRESETS[style === 'plain' ? 'auto' : style]
@@ -150,7 +159,7 @@ export function createProgress(stderr: StatusStream, options: ProgressOptions = 
   const emitThinking = (value: string): void => {
     const text = inline(value)
     if (text === '') return
-    const row = `  思考 · ${shorten(text, MAX_THINKING_CHARS)}`
+    const row = `  ${labels.thought} · ${shorten(text, MAX_THINKING_CHARS)}`
     writeActivity(`${styled ? `${preset.thinking}${row}${ANSI.reset}` : row}\n`)
   }
 
@@ -201,7 +210,7 @@ export function createProgress(stderr: StatusStream, options: ProgressOptions = 
     },
     flushThinking,
     operation(next) {
-      const row = `▶ 执行 · ${inline(next) || 'tool'}`
+      const row = `▶ ${labels.operation} · ${inline(next) || 'tool'}`
       writeActivity(`${styled ? `${preset.operation}${row}${ANSI.reset}` : row}\n`)
     },
     stop,

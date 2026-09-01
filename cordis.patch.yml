@@ -25,7 +25,7 @@
     - id: ask-startup
       name: '@dsh-local/dsh-ask/startup'
 
-    # Reads its task (and the fresh/session flags) from the askStartup service.
+    # Reads task, session, and per-invocation model controls from askStartup.
     - id: ask-runner
       name: '@dsh-local/dsh-ask'
       inject: [askStartup]
@@ -33,5 +33,12 @@
         task: !!js ctx.askStartup.task
         fresh: !!js ctx.askStartup.fresh
         explicitSession: !!js ctx.askStartup.session
+        model: !!js ctx.askStartup.model
+        effort: !!js ctx.askStartup.effort
+        lang: !!js ctx.askStartup.lang
+        listProviders: !!js ctx.askStartup.listProviders
+        provider: !!js ctx.askStartup.provider
+        configureOnly: !!js ctx.askStartup.configureOnly
+        saveLanguage: !!js ctx.askStartup.saveLanguage
         # Override with DSH_ASK_STYLE or a later ask-runner profile patch.
         outputStyle: !!js process.env.DSH_ASK_STYLE ?? 'auto'

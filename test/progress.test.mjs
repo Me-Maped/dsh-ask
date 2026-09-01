@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { apply, internals } from '../lib/index.js'
 import { createProgress, formatToolCall } from '../lib/progress.js'
@@ -202,6 +205,7 @@ test('runner emits later thinking and tool rows on a separate TTY line', { timeo
         async create() { return { agent } },
       }
       if (key === 'agentDefaultModel') return { currentSelection: () => ({ provider: 'test', model: 'test' }) }
+      if (key === 'llm') return { async resolveCallConfig(selection) { return selection } }
       if (key === 'sessions') return { async flush() {} }
       return undefined
     },
@@ -224,5 +228,75 @@ test('runner emits later thinking and tool rows on a separate TTY line', { timeo
   } finally {
     internals.stdout = previousStdout
     internals.stderr = previousStderr
+  }
+})
+
+test('progress accepts English activity labels without changing terminal rendering', () => {
+  const { writes, stream } = capture()
+  const progress = createProgress(stream, { labels: { thought: 'Thought', operation: 'Run' } })
+  progress.start('Thinking…')
+  progress.appendThinking('Checking repository\n')
+  progress.operation('bash $ git status --short')
+  progress.stop()
+
+  assert.deepEqual(writes, [
+    'dsh-ask · Thinking…\n',
+    '  Thought · Checking repository\n',
+    '▶ Run · bash $ git status --short\n',
+  ])
+})
+
+test('runner localizes configuration-only and provider inspection output', { concurrency: false }, async () => {
+  const previousHome = process.env.DSH_HOME
+  const home = mkdtempSync(join(tmpdir(), 'dsh-ask-runner-i18n-'))
+  const previousStdout = internals.stdout
+  const previousStderr = internals.stderr
+  const stdout = []
+  const stderr = []
+  internals.stdout = { write(chunk) { stdout.push(chunk) } }
+  internals.stderr = { write(chunk) { stderr.push(chunk) } }
+  process.env.DSH_HOME = home
+
+  const invoke = async config => {
+    let finish
+    const exited = new Promise(resolve => { finish = resolve })
+    const ctx = {
+      get(key) {
+        if (key === 'appExit') return finish
+        if (key === 'loader') return { await: async () => {} }
+        if (key === 'agents') return {}
+        if (key === 'sessions') return {}
+        if (key === 'agentDefaultModel') return { currentSelection: () => ({ provider: 'test', model: 'base' }) }
+        if (key === 'llm') return {
+          async resolveCallConfig(selection) { return selection },
+          listProviders: () => [{ id: 'test', name: 'Test Provider' }],
+          async listModels() { return [{ id: 'model-a', name: 'Model A' }] },
+          async resolveModelInfo() { return { reasoning: { efforts: [{ id: 'high', name: 'High' }], defaultEffort: 'high' } } },
+        }
+        return undefined
+      },
+      on() { return () => {} },
+    }
+    apply(ctx, config)
+    await exited
+  }
+
+  try {
+    await invoke({ task: '', fresh: false, outputStyle: 'plain', lang: 'en', saveLanguage: true, model: 'model-a', listProviders: false, configureOnly: true })
+    assert.deepEqual(stdout.splice(0), [
+      'dsh-ask: default configuration saved\nLanguage: English (en)\nProvider: test\nModel: model-a\nReasoning effort: provider default\n',
+    ])
+    await invoke({ task: '', fresh: false, outputStyle: 'plain', lang: 'en', saveLanguage: false, listProviders: true, configureOnly: false })
+    assert.deepEqual(stdout.splice(0), [
+      'provider test (Test Provider)\n',
+      '  model model-a (Model A)\n',
+      '    effort high [default] (High)\n',
+    ])
+  } finally {
+    internals.stdout = previousStdout
+    internals.stderr = previousStderr
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    rmSync(home, { recursive: true, force: true })
   }
 })

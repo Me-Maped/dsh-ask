@@ -10,6 +10,8 @@ const projectRoot = fileURLToPath(new URL('../', import.meta.url))
 const binary = join(projectRoot, 'lib', 'bin', 'dsh-ask.js')
 const sourceTemplate = join(projectRoot, 'src', 'templates', 'fish.fish')
 const packagedTemplate = join(projectRoot, 'lib', 'templates', 'fish.fish')
+const startup = await import('../lib/startup.js')
+const askDefaults = await import('../lib/ask-default.js')
 
 /** Run the generated CLI against an isolated shell configuration directory. */
 function run(configHome, ...args) {
@@ -60,4 +62,89 @@ test('CLI documents the registered shells and rejects unsupported ones', () => {
   } finally {
     rmSync(configHome, { recursive: true, force: true })
   }
+})
+
+test('ask startup accepts persisted model and reasoning-effort defaults', () => {
+  const program = startup.askCommand()
+  program.parse(['node', 'dsh', '--model', 'next-model', '--effort', 'high', 'explain', 'this'])
+
+  assert.deepEqual(program.opts(), { model: 'next-model', effort: 'high' })
+  assert.deepEqual(program.args, ['explain', 'this'])
+})
+
+
+test('provider capability flag accepts an optional provider filter', () => {
+  const all = startup.askCommand()
+  all.parse(['node', 'dsh', '--provider'])
+  assert.deepEqual(all.opts(), { provider: true })
+
+  const filtered = startup.askCommand()
+  filtered.parse(['node', 'dsh', '--provider=local'])
+  assert.deepEqual(filtered.opts(), { provider: 'local' })
+})
+
+test('ask defaults are persisted atomically in an independent file', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-ask-defaults-'))
+  const path = join(directory, 'ask', 'config.json')
+  try {
+    assert.deepEqual(await askDefaults.loadAskDefaults(path), {})
+    await askDefaults.saveAskDefaults({ lang: 'en', model: 'next-model', effort: 'high' }, path)
+    assert.deepEqual(await askDefaults.loadAskDefaults(path), { lang: 'en', model: 'next-model', effort: 'high' })
+    assert.deepEqual(askDefaults.loadAskDefaultsSync(path), { lang: 'en', model: 'next-model', effort: 'high' })
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+
+test('model-only invocation publishes configuration mode without a question', () => {
+  let values
+  startup.apply({
+    get(key) {
+      if (key === 'cmdlineArgs') return { get: () => ['--model=next-model'] }
+      if (key === 'appExit') return () => {}
+      return undefined
+    },
+    provide(_name, value) { values = value },
+  })
+  assert.deepEqual(values, {
+    task: '', fresh: false, lang: 'zh', saveLanguage: false, listProviders: false, configureOnly: true, model: 'next-model',
+  })
+})
+
+test('localized help documents all modes in Chinese and English', () => {
+  const render = lang => {
+    const output = []
+    const program = startup.askCommand(lang).configureOutput({ writeOut: text => { output.push(text) } })
+    program.outputHelp()
+    return output.join('')
+  }
+  const zh = render('zh')
+  assert.match(zh, /显示命令、选项和示例/)
+  assert.match(zh, /--lang <zh\|en>/)
+  assert.match(zh, /模式：/)
+  assert.match(zh, /配置：不提供问题时/)
+
+  const en = render('en')
+  assert.match(en, /show commands, options, and examples/)
+  assert.match(en, /--lang <zh\|en>/)
+  assert.match(en, /Modes:/)
+  assert.match(en, /Configure: with no question/)
+})
+
+test('startup selects explicit zh/en language and publishes language-only configuration', () => {
+  assert.equal(startup.startupLanguage(['--lang=en', '--help']), 'en')
+  assert.equal(startup.startupLanguage(['--lang', 'zh']), 'zh')
+  let values
+  startup.apply({
+    get(key) {
+      if (key === 'cmdlineArgs') return { get: () => ['--lang=en'] }
+      if (key === 'appExit') return () => {}
+      return undefined
+    },
+    provide(_name, value) { values = value },
+  })
+  assert.deepEqual(values, {
+    task: '', fresh: false, lang: 'en', saveLanguage: true, listProviders: false, configureOnly: true,
+  })
 })

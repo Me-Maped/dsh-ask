@@ -10,7 +10,7 @@
 dsh --profile ask "what does this function do?"
 ```
 
-The default conversation is scoped to the absolute current directory and the current parent shell. Consecutive asks from one terminal and directory resume its durable session. A new terminal receives a new default session, even in the same directory. Use the Web session surface to browse or recover earlier sessions. `--new` creates a separate persisted session for one run; `--session <id>` selects a specific persisted session.
+The default conversation is scoped to the absolute current directory and the current parent shell. Consecutive asks from one terminal and directory resume its durable session. A new terminal receives a new default session, even in the same directory. Use the Web session surface to browse or recover earlier sessions. `--new` creates a separate persisted session for one run; `--session <id>` selects a specific persisted session. `--model <id>` and `--effort <id>` update **dsh-ask-only** defaults for later asks; they do not change DSH’s global default.
 
 At the end of every turn the runner calls `sessions.flush()`. DSH therefore persists the canonical event log before the process exits. With DSH's default JSONL backend, the log is stored under `$DSH_HOME/sessions/<encoded-cwd>/<session-id>/session.jsonl.zstd` (normally `~/.dsh/sessions/...`). The log contains user messages, assembled assistant messages, tool calls/results, and turn boundaries; dsh-ask does not create a competing history file.
 
@@ -21,6 +21,48 @@ While a terminal is waiting, dsh-ask renders a spinner on stderr with lifecycle 
 A completed `tool/call` creates a separate **operation** row. It shows the tool plus the useful part of its final arguments: shell tools show the command, file tools show the path, and search tools show the pattern and path. Tool results are not dumped to the terminal. In an interactive terminal, thinking rows use the terminal's native dim/italic gray SGR style; operation rows use bold cyan. No font is bundled or resized. When stderr is redirected, both forms are plain line-oriented text without ANSI styling (and `NO_COLOR` disables color in a TTY).
 
 Visible assistant `text-delta` content continues to stream unchanged to stdout; the first such chunk removes the transient spinner. If a later step reasons or calls a tool after visible text has started, its permanent row is placed on a separate TTY line rather than being dropped or written into the answer line. Activity stays on stderr, so `dsh ... > answer.txt` still writes only the answer. If a provider supplies no visible chunks, dsh-ask falls back to printing the completed assistant message after the turn ends.
+
+### Model and reasoning effort
+
+```sh
+# List every registered provider, model, and selectable effort.
+dsh --profile ask --provider
+
+# List one provider. Use equals so the optional value cannot consume question text.
+dsh --profile ask --provider=deepseek
+
+# Save ask's default model and print the active configuration without starting a chat.
+dsh --profile ask --model=deepseek-chat
+
+# Save the default model and ask immediately.
+dsh --profile ask --model deepseek-chat "explain this code quickly"
+
+# Save ask's default reasoning effort without starting a chat.
+dsh --profile ask --effort=high
+```
+
+The default lives in `$DSH_HOME/ask/config.json` (or `~/.dsh/ask/config.json` when `DSH_HOME` is unset) and affects only `dsh-ask`. Every ask reads it, then sends requests through the configured DSH default provider. It never changes Web, TUI, or other profile model settings. Writes use atomic replacement, so an invalid model or unsupported effort cannot replace a working configuration. With no question text, `--model=<id>`, `--effort=<id>`, or both only save settings, start no chat, and print the active provider, model, and effort.
+
+Without a value, `--provider` lists every registered provider; `--provider=<id>` filters the listing. The output includes each model id plus its raw supported effort ids, display names, and default marker. It does not start a chat or write the defaults file.
+
+`--effort` is the raw id exposed by the provider/model, not a fixed `low`/`high` enum. DSH validates it against the current provider and final model before saving. `--model` on its own clears the saved effort so the new model uses its provider default, avoiding a model-specific id leaking from the old model. Passing both `--model` and `--effort` saves both values.
+
+### Language
+
+`dsh-ask` supports only Chinese (`zh`) and English (`en`), defaulting to `zh`. The language is saved in the ask-only defaults. Precedence is explicit `--lang`, the saved default, then `zh`.
+
+```sh
+# Save English as the ask default; no chat is started.
+dsh --profile ask --lang=en
+
+# Render this help in English only; do not write defaults.
+dsh --profile ask --lang=en --help
+
+# Save English and ask immediately.
+dsh --profile ask --lang en "Explain this code"
+```
+
+Language controls `--help`, configuration success output, provider/model/effort inspection, spinners, thinking rows, tool activity, and ask-owned argument prompts. Model answers and raw provider/DSH error details are not translated.
 
 ### Style presets
 
@@ -52,6 +94,9 @@ dsh --profile ask --new "investigate an unrelated issue"
 
 # Resume or create a named persisted session.
 dsh --profile ask --session refactor-auth "continue the refactor"
+
+# Save the default model and reasoning effort, then ask with them.
+dsh --profile ask -m deepseek-reasoner -e high "review this design"
 ```
 
 `DSH_ASK_SESSION` is an optional environment override for wrappers that need a stable, isolated default session id.
