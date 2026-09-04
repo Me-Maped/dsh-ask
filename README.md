@@ -10,7 +10,7 @@
 dsh --profile ask "这个函数做什么？"
 ```
 
-默认会话由**绝对当前目录 + 当前父 shell**决定。同一终端、同一目录连续提问会恢复该终端的持久会话。即使目录相同，打开新终端也会得到一个新的默认会话。需要浏览或恢复旧会话时，请使用 Web 的会话界面。`--new` 为本次提问创建独立的持久会话；`--session <id>` 可指定一个持久会话。`--model <id>` 和 `--effort <id>` 会修改 **dsh-ask 专用**的默认配置；之后的 ask 都使用这个选择，不会修改 DSH 的全局默认值。
+默认会话由**绝对当前目录 + 当前父 shell**决定。同一终端、同一目录连续提问会恢复该终端的持久会话。即使目录相同，打开新终端也会得到一个新的默认会话。需要浏览或恢复旧会话时，请使用 Web 的会话界面。`--new` 为本次提问创建独立的持久会话；`--session <id>` 可指定一个持久会话。`--provider <id>`、`--model <id>` 和 `--effort <id>` 会修改 **dsh-ask 专用**的默认配置；之后的 ask 都使用这个选择，不会修改 DSH 的全局默认值。
 
 每个 turn 结束前，runner 都会执行 `sessions.flush()`。因此 DSH 的 canonical event log 会在进程退出前落盘。使用默认 JSONL 后端时，文件位于 `$DSH_HOME/sessions/<编码后的 cwd>/<session-id>/session.jsonl.zstd`（通常是 `~/.dsh/sessions/...`）。记录包含用户消息、完整 assistant 消息、工具调用/结果及 turn 边界；dsh-ask 不会再维护一份可能与 DSH 不一致的历史副本。
 
@@ -28,22 +28,23 @@ dsh --profile ask "这个函数做什么？"
 # 查看所有已注册 provider，以及每个模型可用的 effort。
 dsh --profile ask --provider
 
-# 只查看一个 provider（使用等号避免它吞掉后面的提问文本）。
+# 保存 ask 默认 provider；没有问题时显示当前配置并退出。
+# 使用等号，避免可选参数吞掉后面的提问文本。
 dsh --profile ask --provider=deepseek
+
+# 保存 provider 和模型后立刻提问。
+dsh --profile ask --provider=deepseek --model=deepseek-chat "快速解释这段代码"
 
 # 只保存 ask 默认模型并显示当前激活配置，不会发起聊天。
 dsh --profile ask --model=deepseek-chat
-
-# 保存默认模型后立刻提问。
-dsh --profile ask --model deepseek-chat "快速解释这段代码"
 
 # 只保存 ask 默认的 reasoning effort。
 dsh --profile ask --effort=high
 ```
 
-默认配置保存在 `$DSH_HOME/ask/config.json`（未设置 `DSH_HOME` 时为 `~/.dsh/ask/config.json`），且仅影响 `dsh-ask`。每次 ask 都先读取此文件，再以配置的 DSH 默认 provider 发起请求；它不会修改 Web、TUI 或其他 profile 的模型设置。写入采用原子替换，因此无效模型或不支持的 effort 不会覆盖原有可用配置。未提供提问文本时，`--model=<id>`、`--effort=<id>`（或两者同时使用）只保存配置，不会发起聊天，并会输出当前激活的 provider、model 和 effort。
+默认配置保存在 `$DSH_HOME/ask/config.json`（未设置 `DSH_HOME` 时为 `~/.dsh/ask/config.json`），且仅影响 `dsh-ask`。每次 ask 都先读取此文件，再按其中保存的 provider 和 model 发起请求；未保存 provider 时回退到 DSH 全局默认 provider。它不会修改 Web、TUI 或其他 profile 的模型设置。写入采用原子替换，因此无效的 provider、模型或不支持的 effort 不会覆盖原有可用配置。未提供提问文本时，`--provider=<id>`、`--model=<id>`、`--effort=<id>`（或它们的组合）只保存配置，不会发起聊天，并会输出当前激活的 provider、model 和 effort。
 
-`--provider` 不带值时列出所有已注册 provider；`--provider=<id>` 仅列出指定 provider。输出包含模型 id 以及模型支持的原始 effort id、名称和默认项。列表命令不会发起聊天，也不会写默认配置。
+`--provider` 不带值时列出所有已注册 provider。输出包含模型 id 以及模型支持的原始 effort id、名称和默认项。列表命令不会发起聊天，也不会写默认配置。`--provider=<id>` 会把该 provider 存为 ask 默认值：未同时传 `--model` 时会丢弃旧模型（以及旧 effort），改用该 provider 已公布的第一个模型，避免把另一个 provider 的模型 id 发给当前适配器。
 
 `--effort` 是 provider/model 暴露的原始 id，不是固定的 `low`/`high` 枚举。DSH 会在保存前按当前 provider 和最终 model 校验组合。仅传 `--model` 时，会清除已保存的 effort，让新模型使用 provider 默认值，避免把仅适用于旧模型的 id 带入新模型；在同一命令中同时传 `--model` 和 `--effort` 则会同时保存两项。
 

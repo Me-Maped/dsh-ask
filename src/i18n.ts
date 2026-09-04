@@ -53,6 +53,7 @@ export interface AskMessages {
     noModels: string
     effortUnavailable: string
     effort: (id: string, name?: string, isDefault?: boolean) => string
+    modelRequired: (id: string) => string
   }
 }
 
@@ -64,10 +65,10 @@ const zh: AskMessages = {
     model: '保存 ask 默认模型；没有问题时显示当前配置并退出',
     effort: '保存 ask 默认推理强度；没有问题时显示当前配置并退出',
     language: '保存 ask 默认输出语言（zh 或 en）；没有问题时显示当前配置并退出',
-    provider: '列出 provider、模型和推理强度能力；不发起聊天或修改配置',
+    provider: '保存 ask 默认 provider；不带值时列出已注册 provider、模型和推理强度',
     modes: '模式：', ask: '提问：提供问题文本后发送请求、流式输出回答并退出。',
     configure: '配置：不提供问题时，保存默认配置并显示当前生效配置。',
-    inspect: '查询：--provider 仅输出能力列表，不发起聊天。', examples: '示例：',
+    inspect: '查询：单独使用 --provider 时列出能力并退出，不发起聊天。', examples: '示例：',
     defaults: '默认配置仅存于 $DSH_HOME/ask/config.json（未设置 DSH_HOME 时为 ~/.dsh/ask/config.json），不会修改 Web、TUI 或其他 profile 的默认设置。',
     questionRequired: '错误：需要提供问题，例如：dsh --profile ask "这个函数做什么？"',
   },
@@ -85,6 +86,7 @@ const zh: AskMessages = {
     none: '没有已注册的 provider', unknown: id => `provider "${id}" 未注册`, provider: (id, name) => `provider ${id}${name === undefined || name === id ? '' : `（${name}）`}`,
     model: (id, name) => `  模型 ${id}${name === undefined || name === id ? '' : `（${name}）`}`, noModels: '  （没有已公布的模型）',
     effortUnavailable: '    推理强度（provider 默认 / 不可选择）', effort: (id, name, isDefault) => `    推理强度 ${id}${isDefault === true ? '［默认］' : ''}${name === undefined || name === id ? '' : `（${name}）`}`,
+    modelRequired: id => `provider "${id}" 没有已公布的默认模型；请同时指定 --model`,
   },
 }
 
@@ -96,10 +98,10 @@ const en: AskMessages = {
     model: 'save ask default model; without a question, print active settings and exit',
     effort: 'save ask default reasoning effort; without a question, print active settings and exit',
     language: 'save ask default output language (zh or en); without a question, print active settings and exit',
-    provider: 'list provider/model/effort capabilities; no chat or setting changes',
+    provider: 'save ask default provider; without a value, list registered providers, models, and efforts',
     modes: 'Modes:', ask: 'Ask: a non-empty question sends one request, streams the answer, then exits.',
     configure: 'Configure: with no question, save defaults and print active settings.',
-    inspect: 'Inspect: --provider lists capabilities and exits without chatting.', examples: 'Examples:',
+    inspect: 'Inspect: --provider with no id lists capabilities and exits without chatting.', examples: 'Examples:',
     defaults: 'Defaults are stored only for dsh-ask at $DSH_HOME/ask/config.json (~/.dsh/ask/config.json when DSH_HOME is unset). They do not alter Web, TUI, or other profile defaults.',
     questionRequired: 'error: a question is required, for example: dsh --profile ask "what does this function do?"',
   },
@@ -117,6 +119,7 @@ const en: AskMessages = {
     none: 'no registered providers', unknown: id => `provider "${id}" is not registered`, provider: (id, name) => `provider ${id}${name === undefined || name === id ? '' : ` (${name})`}`,
     model: (id, name) => `  model ${id}${name === undefined || name === id ? '' : ` (${name})`}`, noModels: '  (no advertised models)',
     effortUnavailable: '    effort (provider default / not selectable)', effort: (id, name, isDefault) => `    effort ${id}${isDefault === true ? ' [default]' : ''}${name === undefined || name === id ? '' : ` (${name})`}`,
+    modelRequired: id => `provider "${id}" has no advertised default model; pass --model as well`,
   },
 }
 

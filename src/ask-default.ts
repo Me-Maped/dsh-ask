@@ -10,6 +10,7 @@ import { isAskLanguage, type AskLanguage } from './i18n.js'
 /** The subset of model selection owned by dsh-ask rather than global DSH settings. */
 export interface AskDefaults {
   lang?: AskLanguage
+  provider?: string
   model?: string
   effort?: string
 }
@@ -25,12 +26,14 @@ function parseDefaults(raw: string, path: string): AskDefaults {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`dsh-ask: default configuration ${path} must be a JSON object`)
   }
-  const { lang, model, effort } = value as Record<string, unknown>
+  const { lang, provider, model, effort } = value as Record<string, unknown>
   if (lang !== undefined && !isAskLanguage(lang)) throw new Error(`dsh-ask: default configuration ${path} has an invalid language`)
+  if (provider !== undefined && (typeof provider !== 'string' || provider === '')) throw new Error(`dsh-ask: default configuration ${path} has an invalid provider`)
   if (model !== undefined && (typeof model !== 'string' || model === '')) throw new Error(`dsh-ask: default configuration ${path} has an invalid model`)
   if (effort !== undefined && (typeof effort !== 'string' || effort === '')) throw new Error(`dsh-ask: default configuration ${path} has an invalid effort`)
   return {
     ...(lang === undefined ? {} : { lang }),
+    ...(provider === undefined ? {} : { provider }),
     ...(model === undefined ? {} : { model }),
     ...(effort === undefined ? {} : { effort }),
   }

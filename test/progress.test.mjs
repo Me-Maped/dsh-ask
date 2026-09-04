@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { apply, internals } from '../lib/index.js'
 import { createProgress, formatToolCall } from '../lib/progress.js'
+import { saveAskDefaults } from '../lib/ask-default.js'
 
 function capture(isTTY = false) {
   const writes = []
@@ -292,6 +293,72 @@ test('runner localizes configuration-only and provider inspection output', { con
       '  model model-a (Model A)\n',
       '    effort high [default] (High)\n',
     ])
+  } finally {
+    internals.stdout = previousStdout
+    internals.stderr = previousStderr
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('runner saves an explicit provider and does not keep another provider\'s model', { concurrency: false }, async () => {
+  const previousHome = process.env.DSH_HOME
+  const home = mkdtempSync(join(tmpdir(), 'dsh-ask-runner-provider-'))
+  const previousStdout = internals.stdout
+  const previousStderr = internals.stderr
+  internals.stdout = { write() {} }
+  internals.stderr = { write() {} }
+  process.env.DSH_HOME = home
+  const selections = []
+
+  const invoke = async config => {
+    let finish
+    const exited = new Promise(resolve => { finish = resolve })
+    const ctx = {
+      get(key) {
+        if (key === 'appExit') return finish
+        if (key === 'loader') return { await: async () => {} }
+        if (key === 'agents') return {}
+        if (key === 'sessions') return {}
+        if (key === 'agentDefaultModel') return { currentSelection: () => ({ provider: 'openai', model: 'gpt-4' }) }
+        if (key === 'llm') return {
+          async resolveCallConfig(selection) {
+            selections.push(selection)
+            return selection
+          },
+          listProviders: () => [
+            { id: 'openai', name: 'OpenAI' },
+            { id: 'deepseek', name: 'DeepSeek' },
+          ],
+          async listModels(provider) {
+            return provider === 'deepseek'
+              ? [{ id: 'deepseek-chat', name: 'DeepSeek Chat' }]
+              : [{ id: 'gpt-4', name: 'GPT-4' }]
+          },
+          async resolveModelInfo() { return {} },
+        }
+        return undefined
+      },
+      on() { return () => {} },
+    }
+    apply(ctx, config)
+    await exited
+  }
+
+  try {
+    await saveAskDefaults({ model: 'gpt-4' })
+    await invoke({
+      task: '', fresh: false, outputStyle: 'plain', lang: 'zh', saveLanguage: false,
+      provider: 'deepseek', listProviders: false, configureOnly: true,
+    })
+    assert.deepEqual(selections.at(-1), { provider: 'deepseek', model: 'deepseek-chat' })
+    const saved = JSON.parse(readFileSync(join(home, 'ask', 'config.json'), 'utf8'))
+    assert.equal(saved.provider, 'deepseek')
+    assert.notEqual(saved.model, 'gpt-4')
+    selections.length = 0
+    await invoke({ task: '', fresh: false, outputStyle: 'plain', lang: 'zh', saveLanguage: true, listProviders: false, configureOnly: true })
+    assert.equal(selections.at(-1)?.provider, 'deepseek')
   } finally {
     internals.stdout = previousStdout
     internals.stderr = previousStderr

@@ -42,13 +42,13 @@ export interface Config {
   lang: AskLanguage
   /** Whether this invocation explicitly changes the persisted language. */
   saveLanguage: boolean
-  /** Model id within the configured default provider for this invocation. */
+  /** Model id within the selected provider for this invocation. */
   model?: string
   /** Adapter-owned reasoning-effort id saved as the ask default. */
   effort?: string
   /** Print registered providers and model capabilities instead of asking. */
   listProviders: boolean
-  /** Optional registered provider id used to filter the capability list. */
+  /** Registered provider id saved as the ask default for this invocation. */
   provider?: string
   /** Change defaults and print their effective value without starting a chat. */
   configureOnly: boolean
@@ -188,6 +188,12 @@ async function printProviders(llm: LlmRuntime, providerFilter: string | undefine
   }
 }
 
+/** First advertised model id for a provider, if the adapter publishes a catalog. */
+async function advertisedModel(llm: LlmRuntime, provider: string): Promise<string | undefined> {
+  const models = await llm.listModels(provider)
+  return models[0]?.id
+}
+
 /** Create or resume the selected session, run one question, persist it, and exit. */
 async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
   let stopEvents: (() => void) | undefined
@@ -227,35 +233,52 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
         : defaultSessionId(cwd)
     const defaultSelection = defaultModel.currentSelection()
     const savedDefaults = await loadAskDefaults()
-    // --model/--effort change only dsh-ask's persisted defaults. A new model
-    // clears the old effort unless an effort is supplied in the same command,
-    // because effort identifiers are model-specific.
-    const selectedDefaultModel = config.model ?? savedDefaults.model
+    // --model/--effort/--provider change only dsh-ask's persisted defaults.
+    // Switching provider without --model drops the previous model and effort:
+    // those identifiers belong to the old provider and would be sent to the
+    // wrong adapter. A new model still clears the old effort unless an
+    // effort is supplied in the same command.
+    const providerChanged = config.provider !== undefined
+    const selectedProvider = config.provider ?? savedDefaults.provider ?? defaultSelection.provider
+    const persistProvider = config.provider !== undefined || savedDefaults.provider !== undefined
+    const selectedDefaultModel = config.model ?? (providerChanged ? undefined : savedDefaults.model)
+    const requestModel = selectedDefaultModel
+      ?? (selectedProvider === defaultSelection.provider ? defaultSelection.model : undefined)
+      ?? await advertisedModel(llm, selectedProvider)
+    if (requestModel === undefined) throw new Error(text.provider.modelRequired(selectedProvider))
+    const persistModel = selectedDefaultModel !== undefined || providerChanged
     const nextDefaults = {
       lang: config.lang,
-      ...(selectedDefaultModel === undefined ? {} : { model: selectedDefaultModel }),
+      ...(persistProvider ? { provider: selectedProvider } : {}),
+      ...(persistModel ? { model: requestModel } : {}),
       ...(config.effort !== undefined
         ? { effort: config.effort }
-        : config.model === undefined && savedDefaults.effort !== undefined
+        : config.model === undefined && !providerChanged && savedDefaults.effort !== undefined
           ? { effort: savedDefaults.effort }
           : {}),
     }
     const selectedEffort = config.effort !== undefined
       ? ReasoningEffortId(config.effort)
-      : config.model === undefined
+      : config.model === undefined && !providerChanged
         ? nextDefaults.effort === undefined
           ? defaultSelection.reasoningEffort
           : ReasoningEffortId(nextDefaults.effort)
         : undefined
     const selection = {
-      provider: defaultSelection.provider,
-      model: nextDefaults.model ?? defaultSelection.model,
+      provider: selectedProvider,
+      model: requestModel,
       ...(selectedEffort === undefined ? {} : { reasoningEffort: selectedEffort }),
     }
     // Validate before persisting so a typo or an unsupported effort cannot
     // leave an unusable ask default behind.
     const resolvedSelection = await llm.resolveCallConfig(selection)
-    if (config.model !== undefined || config.effort !== undefined || config.saveLanguage) await saveAskDefaults(nextDefaults)
+    if (config.model !== undefined || config.effort !== undefined || config.saveLanguage || config.provider !== undefined) {
+      await saveAskDefaults({
+        ...nextDefaults,
+        ...(nextDefaults.model !== undefined ? { model: resolvedSelection.model } : {}),
+        ...(nextDefaults.provider !== undefined ? { provider: resolvedSelection.provider } : {}),
+      })
+    }
     if (config.configureOnly) {
       progress.stop()
       io.stdout.write(`${text.config.saved}\n${text.config.language(config.lang)}\n${text.config.provider(resolvedSelection.provider)}\n${text.config.model(resolvedSelection.model)}\n${text.config.effort(resolvedSelection.reasoningEffort ?? text.config.providerDefault)}\n`)

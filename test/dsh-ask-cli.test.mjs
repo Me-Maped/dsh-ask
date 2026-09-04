@@ -73,14 +73,14 @@ test('ask startup accepts persisted model and reasoning-effort defaults', () => 
 })
 
 
-test('provider capability flag accepts an optional provider filter', () => {
+test('provider flag accepts a bare listing switch or an explicit provider id', () => {
   const all = startup.askCommand()
   all.parse(['node', 'dsh', '--provider'])
   assert.deepEqual(all.opts(), { provider: true })
 
-  const filtered = startup.askCommand()
-  filtered.parse(['node', 'dsh', '--provider=local'])
-  assert.deepEqual(filtered.opts(), { provider: 'local' })
+  const selected = startup.askCommand()
+  selected.parse(['node', 'dsh', '--provider=local'])
+  assert.deepEqual(selected.opts(), { provider: 'local' })
 })
 
 test('ask defaults are persisted atomically in an independent file', async () => {
@@ -88,9 +88,9 @@ test('ask defaults are persisted atomically in an independent file', async () =>
   const path = join(directory, 'ask', 'config.json')
   try {
     assert.deepEqual(await askDefaults.loadAskDefaults(path), {})
-    await askDefaults.saveAskDefaults({ lang: 'en', model: 'next-model', effort: 'high' }, path)
-    assert.deepEqual(await askDefaults.loadAskDefaults(path), { lang: 'en', model: 'next-model', effort: 'high' })
-    assert.deepEqual(askDefaults.loadAskDefaultsSync(path), { lang: 'en', model: 'next-model', effort: 'high' })
+    await askDefaults.saveAskDefaults({ lang: 'en', provider: 'deepseek', model: 'next-model', effort: 'high' }, path)
+    assert.deepEqual(await askDefaults.loadAskDefaults(path), { lang: 'en', provider: 'deepseek', model: 'next-model', effort: 'high' })
+    assert.deepEqual(askDefaults.loadAskDefaultsSync(path), { lang: 'en', provider: 'deepseek', model: 'next-model', effort: 'high' })
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -130,6 +130,51 @@ test('localized help documents all modes in Chinese and English', () => {
   assert.match(en, /--lang <zh\|en>/)
   assert.match(en, /Modes:/)
   assert.match(en, /Configure: with no question/)
+})
+
+test('provider id without a question publishes configuration instead of listing', () => {
+  let values
+  startup.apply({
+    get(key) {
+      if (key === 'cmdlineArgs') return { get: () => ['--provider=deepseek'] }
+      if (key === 'appExit') return () => {}
+      return undefined
+    },
+    provide(_name, value) { values = value },
+  })
+  assert.deepEqual(values, {
+    task: '', fresh: false, lang: 'zh', saveLanguage: false, listProviders: false, configureOnly: true, provider: 'deepseek',
+  })
+})
+
+test('bare provider flag still lists capabilities without saving defaults', () => {
+  let values
+  startup.apply({
+    get(key) {
+      if (key === 'cmdlineArgs') return { get: () => ['--provider'] }
+      if (key === 'appExit') return () => {}
+      return undefined
+    },
+    provide(_name, value) { values = value },
+  })
+  assert.deepEqual(values, {
+    task: '', fresh: false, lang: 'zh', saveLanguage: false, listProviders: true, configureOnly: false,
+  })
+})
+
+test('provider id with a question asks through that provider instead of listing', () => {
+  let values
+  startup.apply({
+    get(key) {
+      if (key === 'cmdlineArgs') return { get: () => ['--provider=deepseek', 'explain', 'this'] }
+      if (key === 'appExit') return () => {}
+      return undefined
+    },
+    provide(_name, value) { values = value },
+  })
+  assert.deepEqual(values, {
+    task: 'explain this', fresh: false, lang: 'zh', saveLanguage: false, listProviders: false, configureOnly: false, provider: 'deepseek',
+  })
 })
 
 test('startup selects explicit zh/en language and publishes language-only configuration', () => {

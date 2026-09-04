@@ -70,7 +70,8 @@ ${text.examples}
   dsh --profile ask --lang=en
   dsh --profile ask -m gpt-5.6-terra -e high "review this design"
   dsh --profile ask --provider
-  dsh --profile ask --provider=openai
+  dsh --profile ask --provider=deepseek
+  dsh --profile ask --provider=deepseek --model=deepseek-chat
 
 ${text.defaults}
 `)
@@ -86,14 +87,19 @@ export function apply(ctx: Context): void {
     const options: { new?: boolean; session?: string; model?: string; effort?: string; lang?: string; provider?: true | string } = program.opts()
     if (options.lang !== undefined && !isAskLanguage(options.lang)) program.error(`error: ${options.lang} is not a supported language (zh, en)`)
     const selectedLanguage: AskLanguage = isAskLanguage(options.lang) ? options.lang : lang
-    const configureOnly = task.trim() === '' && (options.model !== undefined || options.effort !== undefined || options.lang !== undefined)
+    const configureOnly = task.trim() === '' && (
+      options.model !== undefined
+      || options.effort !== undefined
+      || options.lang !== undefined
+      || typeof options.provider === 'string'
+    )
     if (task.trim() === '' && options.provider === undefined && !configureOnly) program.error(text.questionRequired)
     ctx.provide(ASK_STARTUP_SERVICE, {
       task,
       fresh: options.new === true,
       lang: selectedLanguage,
       saveLanguage: options.lang !== undefined,
-      listProviders: options.provider !== undefined,
+      listProviders: options.provider === true,
       configureOnly,
       ...(options.session === undefined ? {} : { session: options.session }),
       ...(options.model === undefined ? {} : { model: options.model }),
