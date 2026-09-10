@@ -10,7 +10,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { loadAskDefaults, saveAskDefaults } from './ask-default.js'
 import { messagesFor, type AskLanguage, type AskMessages } from './i18n.js'
 import type { Context } from '@deepseek-ai/cordis'
-import { createProgress, formatToolCall, type OutputStyle, type StatusStream } from './progress.js'
+import { createProgress, formatToolCall, type ActivityStyleConfig, type OutputStyle, type StatusStream } from './progress.js'
 import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { ModelSelectionRef } from '@deepseek-ai/dsh-agent'
@@ -38,6 +38,8 @@ export interface Config {
   explicitSession?: string
   /** Native-terminal presentation preset. */
   outputStyle: OutputStyle
+  /** Safe token-based activity style overrides loaded from ask config. */
+  activityStyle?: ActivityStyleConfig
   /** Output language selected for this invocation. */
   lang: AskLanguage
   /** Whether this invocation explicitly changes the persisted language. */
@@ -200,9 +202,12 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
   let streamedText = false
   let streamEndsWithNewline = false
   let terminalAnswerLineOpen = false
+  const savedDefaults = await loadAskDefaults()
+  const outputStyle = process.env.DSH_ASK_STYLE === undefined ? savedDefaults.outputStyle ?? config.outputStyle : config.outputStyle
   const text = messagesFor(config.lang)
   const progress = createProgress(io.stderr, {
-    style: config.outputStyle,
+    style: outputStyle,
+    ...(savedDefaults.activityStyle === undefined ? {} : { activityStyle: savedDefaults.activityStyle }),
     labels: { thought: text.progress.thought, operation: text.progress.operation },
     beforeActivity: () => {
       if (!terminalAnswerLineOpen || io.stdout.isTTY !== true || io.stderr.isTTY !== true) return
@@ -232,7 +237,6 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
         ? SessionId(`ask-${randomUUID()}`)
         : defaultSessionId(cwd)
     const defaultSelection = defaultModel.currentSelection()
-    const savedDefaults = await loadAskDefaults()
     // --model/--effort/--provider change only dsh-ask's persisted defaults.
     // Switching provider without --model drops the previous model and effort:
     // those identifiers belong to the old provider and would be sent to the
@@ -256,6 +260,8 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
         : config.model === undefined && !providerChanged && savedDefaults.effort !== undefined
           ? { effort: savedDefaults.effort }
           : {}),
+      ...(savedDefaults.outputStyle === undefined ? {} : { outputStyle: savedDefaults.outputStyle }),
+      ...(savedDefaults.activityStyle === undefined ? {} : { activityStyle: savedDefaults.activityStyle }),
     }
     const selectedEffort = config.effort !== undefined
       ? ReasoningEffortId(config.effort)

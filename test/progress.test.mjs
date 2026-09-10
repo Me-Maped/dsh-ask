@@ -122,6 +122,27 @@ test('subtle and contrast presets select their documented ANSI emphasis', () => 
   assert.match(contrast.writes.join(''), /\x1b\[1;93m▶ 执行 · bash \$ git status --short\x1b\[0m\n/)
 })
 
+test('activityStyle safely overrides preset styles with named tokens only', () => {
+  const { writes, stream } = capture(true)
+  const progress = createProgress(stream, {
+    activityStyle: {
+      status: ['bold', 'gray'],
+      thinking: ['italic', 'gray'],
+      operation: ['bold', 'brightYellow'],
+    },
+  })
+
+  progress.start('正在思考…')
+  progress.appendThinking('检查事件流\n')
+  progress.operation('bash $ git status --short')
+  progress.stop()
+
+  const output = writes.join('')
+  assert.match(output, /\x1b\[1;90m⠋ dsh-ask · 正在思考…\x1b\[0m/)
+  assert.match(output, /\x1b\[3;90m  思考 · 检查事件流\x1b\[0m\n/)
+  assert.match(output, /\x1b\[1;93m▶ 执行 · bash \$ git status --short\x1b\[0m\n/)
+})
+
 
 test('tool-call previews are compact, sanitized, and tolerate malformed JSON', () => {
   assert.equal(

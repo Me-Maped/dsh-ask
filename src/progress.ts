@@ -8,6 +8,15 @@ export interface StatusStream {
 export const OUTPUT_STYLES = ['auto', 'plain', 'subtle', 'contrast'] as const
 export type OutputStyle = typeof OUTPUT_STYLES[number]
 
+/** Activity rows whose terminal SGR style may be overridden by ask config. */
+export const ACTIVITY_STYLE_TARGETS = ['status', 'thinking', 'operation'] as const
+export type ActivityStyleTarget = typeof ACTIVITY_STYLE_TARGETS[number]
+
+/** Safe, named SGR attributes exposed to user configuration. */
+export const ACTIVITY_STYLE_TOKENS = ['bold', 'dim', 'italic', 'gray', 'cyan', 'yellow', 'brightYellow'] as const
+export type ActivityStyleToken = typeof ACTIVITY_STYLE_TOKENS[number]
+export type ActivityStyleConfig = Partial<Record<ActivityStyleTarget, readonly ActivityStyleToken[]>>
+
 /** Options that affect terminal-only rendering, never stdout answer content. */
 export interface ProgressLabels {
   /** Heading for compact reasoning rows. */
@@ -21,6 +30,8 @@ export interface ProgressOptions {
   beforeActivity?: () => void
   /** Native-terminal presentation preset; `plain` avoids terminal control sequences. */
   style?: OutputStyle
+  /** Safe token-based overrides applied on top of the selected preset. */
+  activityStyle?: ActivityStyleConfig
   /** Localized durable-activity labels. */
   labels?: ProgressLabels
 }
@@ -53,6 +64,20 @@ const ANSI = {
   bold: '\x1b[1m',
 } as const
 
+const TOKEN_CODES: Record<ActivityStyleToken, string> = {
+  bold: '1',
+  dim: '2',
+  italic: '3',
+  gray: '90',
+  cyan: '36',
+  yellow: '33',
+  brightYellow: '93',
+}
+
+function sgr(tokens: readonly ActivityStyleToken[]): string {
+  return tokens.length === 0 ? '' : `\x1b[${tokens.map(token => TOKEN_CODES[token]).join(';')}m`
+}
+
 /** ANSI choices deliberately stay within broadly supported SGR sequences. */
 const STYLE_PRESETS: Record<Exclude<OutputStyle, 'plain'>, {
   status: string
@@ -62,6 +87,16 @@ const STYLE_PRESETS: Record<Exclude<OutputStyle, 'plain'>, {
   auto: { status: ANSI.gray, thinking: ANSI.thinking, operation: ANSI.cyan },
   subtle: { status: ANSI.dim, thinking: ANSI.dim, operation: ANSI.bold },
   contrast: { status: ANSI.gray, thinking: ANSI.gray, operation: ANSI.yellow },
+}
+
+function resolvePreset(style: OutputStyle, activityStyle: ActivityStyleConfig | undefined): Record<ActivityStyleTarget, string> {
+  const preset = { ...STYLE_PRESETS[style === 'plain' ? 'auto' : style] }
+  if (activityStyle === undefined) return preset
+  for (const target of ACTIVITY_STYLE_TARGETS) {
+    const tokens = activityStyle[target]
+    if (tokens !== undefined) preset[target] = sgr(tokens)
+  }
+  return preset
 }
 
 /** Collapse control characters so model-provided activity cannot control the terminal. */
@@ -120,10 +155,10 @@ export function formatToolCall(name: string, argumentsJson: string): string {
 
 /** Render terminal lifecycle status and compact activity rows. */
 export function createProgress(stderr: StatusStream, options: ProgressOptions = {}): Progress {
-  const { beforeActivity, style = 'auto', labels = { thought: '思考', operation: '执行' } } = options
+  const { beforeActivity, style = 'auto', activityStyle, labels = { thought: '思考', operation: '执行' } } = options
   const interactive = stderr.isTTY === true && style !== 'plain'
   const styled = interactive && process.env.NO_COLOR === undefined
-  const preset = STYLE_PRESETS[style === 'plain' ? 'auto' : style]
+  const preset = resolvePreset(style, activityStyle)
   let message = ''
   let frame = 0
   let timer: NodeJS.Timeout | undefined
@@ -141,7 +176,7 @@ export function createProgress(stderr: StatusStream, options: ProgressOptions = 
     if (!active) return
     if (interactive) {
       const row = `${SPINNER_FRAMES[frame]} dsh-ask · ${message}`
-      stderr.write(`\r\x1b[2K${styled ? `${preset.status}${row}${ANSI.reset}` : row}`)
+      stderr.write(`\r\x1b[2K${styled && preset.status !== '' ? `${preset.status}${row}${ANSI.reset}` : row}`)
       spinnerVisible = true
       frame = (frame + 1) % SPINNER_FRAMES.length
       return
@@ -160,7 +195,7 @@ export function createProgress(stderr: StatusStream, options: ProgressOptions = 
     const text = inline(value)
     if (text === '') return
     const row = `  ${labels.thought} · ${shorten(text, MAX_THINKING_CHARS)}`
-    writeActivity(`${styled ? `${preset.thinking}${row}${ANSI.reset}` : row}\n`)
+    writeActivity(`${styled && preset.thinking !== '' ? `${preset.thinking}${row}${ANSI.reset}` : row}\n`)
   }
 
   const flushThinking = (): void => {
@@ -211,7 +246,7 @@ export function createProgress(stderr: StatusStream, options: ProgressOptions = 
     flushThinking,
     operation(next) {
       const row = `▶ ${labels.operation} · ${inline(next) || 'tool'}`
-      writeActivity(`${styled ? `${preset.operation}${row}${ANSI.reset}` : row}\n`)
+      writeActivity(`${styled && preset.operation !== '' ? `${preset.operation}${row}${ANSI.reset}` : row}\n`)
     },
     stop,
   }

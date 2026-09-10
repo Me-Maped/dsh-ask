@@ -6,18 +6,49 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { isAskLanguage, type AskLanguage } from './i18n.js'
+import { ACTIVITY_STYLE_TARGETS, ACTIVITY_STYLE_TOKENS, OUTPUT_STYLES, type ActivityStyleConfig, type ActivityStyleToken, type OutputStyle } from './progress.js'
 
-/** The subset of model selection owned by dsh-ask rather than global DSH settings. */
+/** The subset of model selection and terminal preferences owned by dsh-ask rather than global DSH settings. */
 export interface AskDefaults {
   lang?: AskLanguage
   provider?: string
   model?: string
   effort?: string
+  outputStyle?: OutputStyle
+  activityStyle?: ActivityStyleConfig
 }
 
 /** Location of the per-user ask defaults; DSH_HOME keeps it alongside DSH state. */
 export function askDefaultsPath(dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh')): string {
   return join(dshHome, 'ask', 'config.json')
+}
+
+function isOutputStyle(value: unknown): value is OutputStyle {
+  return typeof value === 'string' && (OUTPUT_STYLES as readonly string[]).includes(value)
+}
+
+function isActivityStyleToken(value: unknown): value is ActivityStyleToken {
+  return typeof value === 'string' && (ACTIVITY_STYLE_TOKENS as readonly string[]).includes(value)
+}
+
+function parseActivityStyle(value: unknown, path: string): ActivityStyleConfig | undefined {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`dsh-ask: default configuration ${path} has an invalid activityStyle`)
+  }
+  const input = value as Record<string, unknown>
+  const output: ActivityStyleConfig = {}
+  for (const key of Object.keys(input)) {
+    if (!(ACTIVITY_STYLE_TARGETS as readonly string[]).includes(key)) {
+      throw new Error(`dsh-ask: default configuration ${path} has an invalid activityStyle target`)
+    }
+    const tokens = input[key]
+    if (!Array.isArray(tokens) || !tokens.every(isActivityStyleToken)) {
+      throw new Error(`dsh-ask: default configuration ${path} has an invalid activityStyle token`)
+    }
+    output[key as keyof ActivityStyleConfig] = tokens
+  }
+  return output
 }
 
 function parseDefaults(raw: string, path: string): AskDefaults {
@@ -26,16 +57,20 @@ function parseDefaults(raw: string, path: string): AskDefaults {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`dsh-ask: default configuration ${path} must be a JSON object`)
   }
-  const { lang, provider, model, effort } = value as Record<string, unknown>
+  const { lang, provider, model, effort, outputStyle, activityStyle } = value as Record<string, unknown>
   if (lang !== undefined && !isAskLanguage(lang)) throw new Error(`dsh-ask: default configuration ${path} has an invalid language`)
   if (provider !== undefined && (typeof provider !== 'string' || provider === '')) throw new Error(`dsh-ask: default configuration ${path} has an invalid provider`)
   if (model !== undefined && (typeof model !== 'string' || model === '')) throw new Error(`dsh-ask: default configuration ${path} has an invalid model`)
   if (effort !== undefined && (typeof effort !== 'string' || effort === '')) throw new Error(`dsh-ask: default configuration ${path} has an invalid effort`)
+  if (outputStyle !== undefined && !isOutputStyle(outputStyle)) throw new Error(`dsh-ask: default configuration ${path} has an invalid outputStyle`)
+  const parsedActivityStyle = parseActivityStyle(activityStyle, path)
   return {
     ...(lang === undefined ? {} : { lang }),
     ...(provider === undefined ? {} : { provider }),
     ...(model === undefined ? {} : { model }),
     ...(effort === undefined ? {} : { effort }),
+    ...(outputStyle === undefined ? {} : { outputStyle }),
+    ...(parsedActivityStyle === undefined ? {} : { activityStyle: parsedActivityStyle }),
   }
 }
 

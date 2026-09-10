@@ -82,6 +82,19 @@ dsh --profile ask --lang en "Explain this code"
 | `subtle` | 只使用标准的淡化/粗体强调，不使用颜色或斜体。 |
 | `contrast` | 保留低调的思考样式，并用亮黄色突出执行操作。 |
 
+如需只调整某类活动行，可在 `$DSH_HOME/ask/config.json` 中用 `activityStyle` 覆盖 preset 的部分字段。它只接受受限的命名 token，由代码映射为 SGR；不接受数字码或原始 escape sequence。例如把思考行从默认的 `dim + italic + gray` 调亮为 `italic + gray`：
+
+```json
+{
+  "outputStyle": "auto",
+  "activityStyle": {
+    "thinking": ["italic", "gray"]
+  }
+}
+```
+
+可覆盖字段仅有 `status`、`thinking`、`operation`；可用 token 为 `bold`、`dim`、`italic`、`gray`、`cyan`、`yellow`、`brightYellow`。`NO_COLOR` 和 `plain` 仍会关闭 ANSI 样式。
+
 `NO_COLOR` 仍可关闭带样式预设中的 SGR 颜色/字体样式；如果终端连控制序列都不兼容，请使用 `plain`。
 
 ## 命令

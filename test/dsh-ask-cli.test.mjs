@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -88,9 +88,26 @@ test('ask defaults are persisted atomically in an independent file', async () =>
   const path = join(directory, 'ask', 'config.json')
   try {
     assert.deepEqual(await askDefaults.loadAskDefaults(path), {})
-    await askDefaults.saveAskDefaults({ lang: 'en', provider: 'deepseek', model: 'next-model', effort: 'high' }, path)
-    assert.deepEqual(await askDefaults.loadAskDefaults(path), { lang: 'en', provider: 'deepseek', model: 'next-model', effort: 'high' })
-    assert.deepEqual(askDefaults.loadAskDefaultsSync(path), { lang: 'en', provider: 'deepseek', model: 'next-model', effort: 'high' })
+    const defaults = { lang: 'en', provider: 'deepseek', model: 'next-model', effort: 'high', outputStyle: 'auto', activityStyle: { thinking: ['italic', 'gray'] } }
+    await askDefaults.saveAskDefaults(defaults, path)
+    assert.deepEqual(await askDefaults.loadAskDefaults(path), defaults)
+    assert.deepEqual(askDefaults.loadAskDefaultsSync(path), defaults)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('ask defaults reject unsafe activityStyle values', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-ask-defaults-invalid-'))
+  const path = join(directory, 'ask', 'config.json')
+  try {
+    mkdirSync(join(directory, 'ask'))
+    writeFileSync(path, JSON.stringify({ activityStyle: { thinking: ['italic', '\x1b[31m'] } }))
+    await assert.rejects(askDefaults.loadAskDefaults(path), /invalid activityStyle token/)
+    writeFileSync(path, JSON.stringify({ activityStyle: { other: ['italic'] } }))
+    await assert.rejects(askDefaults.loadAskDefaults(path), /invalid activityStyle target/)
+    writeFileSync(path, JSON.stringify({ activityStyle: { thinking: [3, 90] } }))
+    await assert.rejects(askDefaults.loadAskDefaults(path), /invalid activityStyle token/)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
