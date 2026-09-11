@@ -97,13 +97,34 @@ export const internals: { stdout: OutputStream; stderr: StatusStream } = {
   stderr: process.stderr,
 }
 
+interface SessionEventSource {
+  readonly events?: readonly SessionEvent[] | Iterable<SessionEvent>
+  readonly seq?: number
+  snapshotEvents?(fromSeq?: number, toSeqExclusive?: number): readonly SessionEvent[]
+  eventAt?(seq: number): SessionEvent | undefined
+}
+
+/** Read session events across DSH session API variants. */
+function sessionEventsSince(session: SessionEventSource, firstSeq: number): readonly SessionEvent[] {
+  if (typeof session.snapshotEvents === 'function') return session.snapshotEvents(firstSeq)
+  if (session.events !== undefined) return Array.from(session.events).filter(event => event.seq >= firstSeq)
+  if (typeof session.eventAt === 'function' && typeof session.seq === 'number') {
+    const events: SessionEvent[] = []
+    for (let seq = firstSeq; seq < session.seq; seq += 1) {
+      const event = session.eventAt(seq)
+      if (event !== undefined) events.push(event)
+    }
+    return events
+  }
+  throw new Error('dsh-ask: unsupported DSH session API; cannot read session events')
+}
+
 /** Aggregate the final assistant text and terminal reason in one turn interval. */
-function summarize(events: readonly SessionEvent[], firstSeq: number): RunOutcome {
+function summarize(events: readonly SessionEvent[]): RunOutcome {
   let started = false
   let text = ''
   let reason: RunOutcome['reason']
   for (const event of events) {
-    if (event.seq < firstSeq) continue
     if (event.type === 'turn/start') {
       started = true
       continue
@@ -371,7 +392,7 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
     progress.flushThinking()
     if (!streamedText) progress.update(text.progress.savingHistory)
     await sessions.flush(handle.agent.session)
-    const outcome = summarize(handle.agent.session.events, firstSeq)
+    const outcome = summarize(sessionEventsSince(handle.agent.session, firstSeq))
     progress.stop()
     if (streamedText) {
       if (!streamEndsWithNewline) io.stdout.write('\n')
