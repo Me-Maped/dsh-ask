@@ -4,6 +4,12 @@
 
 `dsh-ask` 是一个轻量的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) bundle：在当前目录提交一个问题，将可见回答流式输出到终端，然后退出；它不会启动 TUI。
 
+## 运行时兼容性
+
+插件 `0.2.1` 面向 **dsh `0.2.1-rc.2`**，5 个 dsh 核心包的 peer 与开发依赖均固定到该版本；不再声明支持旧版 `0.1.x`。配套开发依赖为 Cordis `4.0.5`、plugin-loader `1.0.6` 和 Schemastery `3.18.5`。
+
+实时回答与思考提示使用 `agent/assistant-stream`，持久会话仍通过 `session/event` 和 `sessions.flush()` 处理。升级其他 dsh 版本前，应重新核对接口并运行回归，而不是直接放宽兼容范围或启用版本豁免。
+
 ## 行为
 
 ```sh
@@ -12,7 +18,7 @@ dsh --profile ask "这个函数做什么？"
 
 默认会话由**绝对当前目录 + 当前父 shell**决定。同一终端、同一目录连续提问会恢复该终端的持久会话。即使目录相同，打开新终端也会得到一个新的默认会话。需要浏览或恢复旧会话时，请使用 Web 的会话界面。`--new` 为本次提问创建独立的持久会话；`--session <id>` 可指定一个持久会话。`--provider <id>`、`--model <id>` 和 `--effort <id>` 会修改 **dsh-ask 专用**的默认配置；之后的 ask 都使用这个选择，不会修改 DSH 的全局默认值。
 
-每个 turn 结束前，runner 都会执行 `sessions.flush()`。因此 DSH 的 canonical event log 会在进程退出前落盘。使用默认 JSONL 后端时，文件位于 `$DSH_HOME/sessions/<编码后的 cwd>/<session-id>/session.jsonl.zstd`（通常是 `~/.dsh/sessions/...`）。记录包含用户消息、完整 assistant 消息、工具调用/结果及 turn 边界；dsh-ask 不会再维护一份可能与 DSH 不一致的历史副本。
+每个 turn 结束前，runner 都会执行 `sessions.flush()`。因此 DSH 的 canonical event log 会在进程退出前落盘。使用默认 JSONL 后端时，文件位于 `$DSH_HOME/sessions/<编码后的 cwd>/<session-id>/session.v4.jsonl.zstd`（通常是 `~/.dsh/sessions/...`）。记录包含用户消息、完整 assistant 消息、工具调用/结果及 turn 边界；dsh-ask 不会再维护一份可能与 DSH 不一致的历史副本。
 
 ## 终端输出
 
@@ -194,6 +200,16 @@ pnpm run build
 ```
 
 Cordis 和 DSH 包保持为 peer dependencies，因此 profile 会为 bundle 提供同一组服务实例。关于源码/构建产物布局及验证命令，请见 [TypeScript 维护说明](docs/typescript-comparison.md)。
+
+
+真实运行时回归使用临时 `DSH_HOME`，安装打包产物后通过本地确定性 provider 验证会话恢复、输出、配置和错误退出，不发送付费模型请求：
+
+```sh
+pnpm pack --pack-destination artifacts
+node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.1.tgz
+```
+
+将第一个路径替换为本机 dsh 的 `package.json`（例如 `/usr/lib/node_modules/@deepseek-ai/dsh/package.json`）。测试安装可能需要访问 npm；测试目录结束后自动清理。
 
 ## 开发与发布
 

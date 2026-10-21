@@ -184,7 +184,7 @@ test('NO_COLOR leaves interactive activity readable without SGR styles', { concu
 })
 
 
-test('runner emits later thinking and tool rows on a separate TTY line', { timeout: 1_000 }, async () => {
+test('runner streams dsh 0.2 assistant frames and keeps later activity on a separate TTY line', { timeout: 1_000 }, async () => {
   const stdout = []
   const stderr = []
   const previousStdout = internals.stdout
@@ -201,6 +201,11 @@ test('runner emits later thinking and tool rows on a separate TTY line', { timeo
     session.events.push(event)
     for (const listener of listeners.get('session/event') ?? []) listener(session, event)
   }
+  const stream = (chunk, subject = agent) => {
+    for (const listener of listeners.get('agent/assistant-stream') ?? []) {
+      listener({ agent: subject, frame: { type: 'chunk', attemptId: 'attempt-1', revision: 1, index: sequence++, time: Date.now(), chunk } })
+    }
+  }
   let finish
   const exited = new Promise(resolve => { finish = resolve })
   const agent = {
@@ -210,10 +215,12 @@ test('runner emits later thinking and tool rows on a separate TTY line', { timeo
       for (const listener of listeners.get('agent/status') ?? []) listener({ agent, status: 'running' })
       emit('turn/start', { turn: 1 })
       emit('step/start', { turn: 1, step: 1 })
-      emit('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'Draft' } })
-      emit('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 1, text: 'Checking again\n' } })
+      stream({ type: 'text-delta', index: 0, text: 'Draft' })
+      stream({ type: 'reasoning-delta', index: 1, text: 'Checking again\n' })
+      stream({ type: 'block-end', index: 1, block: { type: 'reasoning', text: 'Checking again\n' } })
       emit('tool/call', { turn: 1, step: 1, callId: 'call-1', name: 'bash', arguments: '{"command":"git status --short"}' })
-      emit('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'text-delta', index: 2, text: ' complete' } })
+      stream({ type: 'text-delta', index: 2, text: ' complete' })
+      stream({ type: 'text-delta', index: 0, text: 'Other agent' }, {})
       emit('assistant/message', { turn: 1, step: 1, message: { content: [{ type: 'text', text: 'Draft complete' }] } })
       emit('turn/end', { turn: 1, reason: { kind: 'completed' } })
     },
@@ -243,7 +250,9 @@ test('runner emits later thinking and tool rows on a separate TTY line', { timeo
     apply(ctx, { task: 'test', fresh: false, explicitSession: 'stream-test', outputStyle: 'contrast' })
     assert.equal(await exited, 0)
     assert.deepEqual(stdout, ['Draft', ' complete', '\n'])
+    assert.equal([...listeners.values()].flat().length, 0, 'runner releases all event subscriptions')
     const activity = stderr.join('')
+    assert.equal(activity.split('Checking again').length - 1, 1)
     assert.match(activity, /\n\x1b\[2;90m  思考 · Checking again\x1b\[0m\n/)
     assert.match(activity, /\x1b\[1;93m▶ 执行 · bash \$ git status --short\x1b\[0m\n/)
     assert.ok(activity.indexOf('思考 · Checking again') < activity.indexOf('▶ 执行 · bash'))

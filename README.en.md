@@ -4,6 +4,12 @@
 
 `dsh-ask` is a small [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) bundle for terminal questions: it runs one turn in the current directory, streams the visible answer, and exits. It does not start the TUI.
 
+## Runtime compatibility
+
+Plugin `0.2.1` targets **dsh `0.2.1-rc.2`**. Its five dsh core peer and development dependencies are pinned to that version; `0.1.x` is no longer declared supported. Development dependencies also match Cordis `4.0.5`, plugin-loader `1.0.6`, and Schemastery `3.18.5`.
+
+Live answers and reasoning use `agent/assistant-stream`; durable session handling still uses `session/event` and `sessions.flush()`. Recheck interfaces and rerun regression tests before supporting another dsh version, rather than merely widening ranges or granting a version exemption.
+
 ## Behavior
 
 ```sh
@@ -12,7 +18,7 @@ dsh --profile ask "what does this function do?"
 
 The default conversation is scoped to the absolute current directory and the current parent shell. Consecutive asks from one terminal and directory resume its durable session. A new terminal receives a new default session, even in the same directory. Use the Web session surface to browse or recover earlier sessions. `--new` creates a separate persisted session for one run; `--session <id>` selects a specific persisted session. `--provider <id>`, `--model <id>`, and `--effort <id>` update **dsh-ask-only** defaults for later asks; they do not change DSH’s global default.
 
-At the end of every turn the runner calls `sessions.flush()`. DSH therefore persists the canonical event log before the process exits. With DSH's default JSONL backend, the log is stored under `$DSH_HOME/sessions/<encoded-cwd>/<session-id>/session.jsonl.zstd` (normally `~/.dsh/sessions/...`). The log contains user messages, assembled assistant messages, tool calls/results, and turn boundaries; dsh-ask does not create a competing history file.
+At the end of every turn the runner calls `sessions.flush()`. DSH therefore persists the canonical event log before the process exits. With DSH's default JSONL backend, the log is stored under `$DSH_HOME/sessions/<encoded-cwd>/<session-id>/session.v4.jsonl.zstd` (normally `~/.dsh/sessions/...`). The log contains user messages, assembled assistant messages, tool calls/results, and turn boundaries; dsh-ask does not create a competing history file.
 
 ## Terminal output
 
@@ -181,6 +187,16 @@ pnpm run build
 ```
 
 The package keeps Cordis and DSH packages as peer dependencies so a profile supplies the same service instances used by the bundle. The [TypeScript maintenance notes](docs/typescript-comparison.md) document the source/artifact layout and supported validation commands.
+
+
+The runtime smoke test uses a temporary `DSH_HOME`, installs the packed artifact, and exercises persistence, resume, output, configuration, and error exits with a deterministic local provider. It makes no paid model requests:
+
+```sh
+pnpm pack --pack-destination artifacts
+node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.1.tgz
+```
+
+Replace the first path with the installed dsh `package.json` (for example, `/usr/lib/node_modules/@deepseek-ai/dsh/package.json`). Installation may need npm access. The temporary test home is removed afterward.
 
 ## Development and publication
 

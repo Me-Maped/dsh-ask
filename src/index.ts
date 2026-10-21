@@ -147,7 +147,6 @@ function activityFor(event: SessionEvent, text: AskMessages): string | undefined
   switch (event.type) {
     case 'turn/start': return text.progress.thinking
     case 'step/start': return text.progress.analyzing
-    case 'assistant/chunk': return event.data.chunk.type === 'text-delta' ? text.progress.generating : undefined
     case 'tool/call': return text.progress.callingTool(event.data.name)
     case 'tool/result': return text.progress.organizingToolResult
     default: return undefined
@@ -337,38 +336,46 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
       progress.update(text.progress.thinking)
     }, { global: true })
     const reasoningChunks = new Set<string>()
+    const stopAssistantStream = ctx.on('agent/assistant-stream', ({ agent: subject, frame }) => {
+      if (subject !== handle.agent) return
+      if (frame.type === 'end') {
+        progress.flushThinking()
+        reasoningChunks.clear()
+        return
+      }
+      if (frame.type !== 'chunk') return
+      const chunk = frame.chunk
+      if (chunk.type === 'text-delta') {
+        const text = chunk.text
+        if (text === '') return
+        if (!streamedText) {
+          streamedText = true
+          progress.flushThinking()
+          progress.stop()
+        }
+        io.stdout.write(text)
+        streamEndsWithNewline = text.endsWith('\n')
+        terminalAnswerLineOpen = !streamEndsWithNewline
+        return
+      }
+      if (chunk.type !== 'reasoning-delta' && chunk.type !== 'block-end') return
+      const reasoningKey = `${frame.attemptId}:${chunk.index}`
+      if (chunk.type === 'reasoning-delta') {
+        if (chunk.text !== '') {
+          reasoningChunks.add(reasoningKey)
+          progress.appendThinking(chunk.text)
+        }
+        return
+      }
+      if (chunk.type === 'block-end' && chunk.block.type === 'reasoning') {
+        if (!reasoningChunks.delete(reasoningKey) && chunk.block.text !== '') {
+          progress.appendThinking(chunk.block.text)
+        }
+        progress.flushThinking()
+      }
+    }, { global: true })
     const stopSessionEvents = ctx.on('session/event', (subject, event) => {
       if (subject !== handle.agent.session) return
-      if (event.type === 'assistant/chunk') {
-        const chunk = event.data.chunk
-        if (chunk.type === 'text-delta') {
-          const text = chunk.text
-          if (text === '') return
-          if (!streamedText) {
-            streamedText = true
-            progress.flushThinking()
-            progress.stop()
-          }
-          io.stdout.write(text)
-          streamEndsWithNewline = text.endsWith('\n')
-          terminalAnswerLineOpen = !streamEndsWithNewline
-          return
-        }
-        if (chunk.type === 'reasoning-delta') {
-          if (chunk.text !== '') {
-            reasoningChunks.add(`${event.data.turn}:${event.data.step}:${chunk.index}`)
-            progress.appendThinking(chunk.text)
-          }
-          return
-        }
-        if (chunk.type === 'block-end' && chunk.block.type === 'reasoning') {
-          if (!reasoningChunks.delete(`${event.data.turn}:${event.data.step}:${chunk.index}`) && chunk.block.text !== '') {
-            progress.appendThinking(chunk.block.text)
-          }
-          progress.flushThinking()
-          return
-        }
-      }
       if (event.type === 'tool/call') {
         progress.flushThinking()
         progress.operation(formatToolCall(event.data.name, event.data.arguments))
@@ -379,6 +386,7 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
     }, { global: true })
     stopEvents = (): void => {
       stopAgentStatus()
+      stopAssistantStream()
       stopSessionEvents()
     }
 
