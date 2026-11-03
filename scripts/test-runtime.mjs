@@ -14,7 +14,7 @@ assert.ok(runtimeArgument && archiveArgument, 'Pass the installed dsh package.js
 const runtime = resolve(runtimeArgument)
 const archive = resolve(archiveArgument)
 const metadata = JSON.parse(readFileSync(runtime, 'utf8'))
-assert.equal(metadata.version, '0.2.1-rc.2', 'This smoke suite targets dsh 0.2.1-rc.2')
+assert.equal(metadata.version, '0.2.1-rc.5', 'This smoke suite targets dsh 0.2.1-rc.5')
 const binary = resolve(dirname(runtime), typeof metadata.bin === 'string' ? metadata.bin : metadata.bin.dsh)
 const home = mkdtempSync(join(tmpdir(), 'dsh-ask-runtime-'))
 const profile = join(home, 'profiles', 'ask')

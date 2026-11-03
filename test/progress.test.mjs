@@ -184,13 +184,17 @@ test('NO_COLOR leaves interactive activity readable without SGR styles', { concu
 })
 
 
-test('runner streams dsh 0.2 assistant frames and keeps later activity on a separate TTY line', { timeout: 1_000 }, async () => {
+test('runner streams dsh 0.2 assistant frames and keeps later activity on a separate TTY line', { timeout: 1_000, concurrency: false }, async () => {
+  const previousHome = process.env.DSH_HOME
+  const home = mkdtempSync(join(tmpdir(), 'dsh-ask-runner-stream-'))
   const stdout = []
   const stderr = []
   const previousStdout = internals.stdout
   const previousStderr = internals.stderr
   internals.stdout = { isTTY: true, write(chunk) { stdout.push(chunk) } }
   internals.stderr = { isTTY: true, write(chunk) { stderr.push(chunk) } }
+  // Saved ask defaults live under DSH_HOME; a real user config must not reach this run.
+  process.env.DSH_HOME = home
 
   const listeners = new Map()
   const session = { seq: 0, events: [] }
@@ -259,6 +263,9 @@ test('runner streams dsh 0.2 assistant frames and keeps later activity on a sepa
   } finally {
     internals.stdout = previousStdout
     internals.stderr = previousStderr
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    rmSync(home, { recursive: true, force: true })
   }
 })
 

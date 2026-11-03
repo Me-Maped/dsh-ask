@@ -6,7 +6,7 @@
 
 ## Runtime compatibility
 
-Plugin `0.2.1` targets **dsh `0.2.1-rc.2`**. Its five dsh core peer and development dependencies are pinned to that version; `0.1.x` is no longer declared supported. Development dependencies also match Cordis `4.0.5`, plugin-loader `1.0.6`, and Schemastery `3.18.5`.
+Plugin `0.2.2` targets **dsh `0.2.1-rc.5`**. Its five dsh core peer and development dependencies are pinned to that version; earlier dsh releases, including `0.2.1-rc.2` and `0.1.x`, are no longer declared supported. Development dependencies still match Cordis `4.0.5`, plugin-loader `1.0.6`, and Schemastery `3.18.5`, the versions dsh `0.2.1-rc.5` itself ships. Because the compatibility window changed, the plugin version moves from `0.2.1` to `0.2.2` so the new dependency pin is visible in the version number.
 
 Live answers and reasoning use `agent/assistant-stream`; durable session handling still uses `session/event` and `sessions.flush()`. Recheck interfaces and rerun regression tests before supporting another dsh version, rather than merely widening ranges or granting a version exemption.
 
@@ -193,7 +193,7 @@ The runtime smoke test uses a temporary `DSH_HOME`, installs the packed artifact
 
 ```sh
 pnpm pack --pack-destination artifacts
-node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.1.tgz
+node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.2.tgz
 ```
 
 Replace the first path with the installed dsh `package.json` (for example, `/usr/lib/node_modules/@deepseek-ai/dsh/package.json`). Installation may need npm access. The temporary test home is removed afterward.
