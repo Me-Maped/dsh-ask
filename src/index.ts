@@ -8,6 +8,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { loadAskDefaults, saveAskDefaults } from './ask-default.js'
+import { loadTerminalReplyPolicy } from './terminal-reply.js'
 import { messagesFor, type AskLanguage, type AskMessages } from './i18n.js'
 import type { Context } from '@deepseek-ai/cordis'
 import { createProgress, formatToolCall, type ActivityStyleConfig, type OutputStyle, type StatusStream } from './progress.js'
@@ -26,7 +27,7 @@ import type {} from '@deepseek-ai/dsh-cmdline'
 export const name = 'ask-runner'
 
 /** Core services required before the one-shot turn can start. */
-export const inject = ['agentDefaultModel', 'agents', 'sessions', 'llm']
+export const inject = ['agentDefaultModel', 'agents', 'sessions', 'llm', 'systemPrompt']
 
 /** Plugin configuration resolved from the startup service. */
 export interface Config {
@@ -311,10 +312,21 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
       exitAfterReady(ctx, io, 0)
       return
     }
+    const replyPolicy = await loadTerminalReplyPolicy()
     const agentOptions = { provider: selection.provider, model: selection.model }
     const setup = (agentCtx: Context): void => {
       const selected: ModelSelectionRef = { current: selection, assembled: undefined }
       installModelSelection(agentCtx, selected)
+      if (replyPolicy !== '') {
+        const systemPrompt = agentCtx.get('systemPrompt')
+        if (systemPrompt === undefined) throw new Error('dsh-ask: systemPrompt service is required for terminal reply policy')
+        systemPrompt.section({
+          name: 'ask:terminal-reply',
+          order: systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX') + 1,
+          text: replyPolicy,
+          interpolate: false,
+        })
+      }
     }
 
     let handle

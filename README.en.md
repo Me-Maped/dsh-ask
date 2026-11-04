@@ -28,6 +28,23 @@ A completed `tool/call` creates a separate **operation** row. It shows the tool 
 
 Visible assistant `text-delta` content continues to stream unchanged to stdout; the first such chunk removes the transient spinner. If a later step reasons or calls a tool after visible text has started, its permanent row is placed on a separate TTY line rather than being dropped or written into the answer line. Activity stays on stderr, so `dsh ... > answer.txt` still writes only the answer. If a provider supplies no visible chunks, dsh-ask falls back to printing the completed assistant message after the turn ends.
 
+### Reply policy
+
+[TERMINAL_REPLY.md](TERMINAL_REPLY.md) in the project root is the editable terminal reply policy. Its contents go directly to the model, without skill metadata. The defaults ask for the conclusion first, short paragraphs or single-level lists, and commands on their own lines, avoiding headings, bold, tables, and code fences. Complex questions can expand as needed. Explicit requests for complete code, JSON, Markdown, or detailed reports retain the required format. For example:
+
+```text
+Check changes in the current directory:
+git status --short
+```
+
+Before each actual ask, the runner reads the policy once from the plugin package root and registers an independent system-prompt section after the persona suffix, scoped to the current ask Agent. This applies to both new and resumed sessions. User messages stay unchanged; the policy is not prepended to user history or applied to other Agents, Web, or TUI. `{{...}}` stays literal. Help, configuration, and provider inspection do not read the file.
+
+The file ships with the package and is resolved independently of the question's working directory. After editing the source file, reinstall the plugin (for example, `dsh plugin --profile ask add ./`). Editing the file inside the installed plugin package takes effect on the next ask. A blank file disables the extra policy. A missing or unreadable file reports its path on stderr and exits with a nonzero status.
+
+This policy guides model presentation; adherence is not guaranteed. stdout still streams unchanged, with no Markdown filtering or answer truncation. `outputStyle` only controls progress on stderr.
+
+For manual acceptance, try a simple question, a command explanation, a multistep task, complete code, and JSON-only output. Check brevity, copyability, and preservation of explicit format requirements.
+
 ### Model and reasoning effort
 
 ```sh

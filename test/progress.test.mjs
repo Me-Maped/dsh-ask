@@ -3,9 +3,17 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
+import { Context } from '@deepseek-ai/cordis'
 import { apply, internals } from '../lib/index.js'
 import { createProgress, formatToolCall } from '../lib/progress.js'
 import { saveAskDefaults } from '../lib/ask-default.js'
+
+// Resolve the registry and scopes from the same DSH peer graph as the agent.
+const agentRequire = createRequire(import.meta.resolve('@deepseek-ai/dsh-agent'))
+const { default: SystemPrompt, renderPrompt } = await import(pathToFileURL(agentRequire.resolve('@deepseek-ai/dsh-system-prompt')))
+const { createScope } = await import(pathToFileURL(agentRequire.resolve('@deepseek-ai/dsh-scope')))
 
 function capture(isTTY = false) {
   const writes = []
@@ -185,6 +193,13 @@ test('NO_COLOR leaves interactive activity readable without SGR styles', { concu
 
 
 test('runner streams dsh 0.2 assistant frames and keeps later activity on a separate TTY line', { timeout: 1_000, concurrency: false }, async () => {
+  const promptContext = new Context()
+  const promptPlugin = promptContext.plugin(SystemPrompt, { personaSuffix: 'Existing persona suffix.' })
+  await promptPlugin.await()
+  const agentKey = {}
+  const agentScope = createScope(promptContext, agentKey)
+  const siblingKey = {}
+  const siblingScope = createScope(promptContext, siblingKey)
   const previousHome = process.env.DSH_HOME
   const home = mkdtempSync(join(tmpdir(), 'dsh-ask-runner-stream-'))
   const stdout = []
@@ -215,7 +230,8 @@ test('runner streams dsh 0.2 assistant frames and keeps later activity on a sepa
   const agent = {
     session,
     async whenIdle() {},
-    followup() {
+    followup(message) {
+      assert.deepEqual(message.content, [{ type: 'text', text: 'test' }], 'user input stays unchanged')
       for (const listener of listeners.get('agent/status') ?? []) listener({ agent, status: 'running' })
       emit('turn/start', { turn: 1 })
       emit('step/start', { turn: 1, step: 1 })
@@ -235,7 +251,10 @@ test('runner streams dsh 0.2 assistant frames and keeps later activity on a sepa
       if (key === 'loader') return { await: async () => {} }
       if (key === 'agents') return {
         async resume({ resumeSessionId }) { throw new Error(`session "${resumeSessionId}" not found`) },
-        async create() { return { agent } },
+        async create({ setup }) {
+          setup(agentScope.ctx)
+          return { agent }
+        },
       }
       if (key === 'agentDefaultModel') return { currentSelection: () => ({ provider: 'test', model: 'test' }) }
       if (key === 'llm') return { async resolveCallConfig(selection) { return selection } }
@@ -253,6 +272,13 @@ test('runner streams dsh 0.2 assistant frames and keeps later activity on a sepa
   try {
     apply(ctx, { task: 'test', fresh: false, explicitSession: 'stream-test', outputStyle: 'contrast' })
     assert.equal(await exited, 0)
+    const prompts = promptContext.get('systemPrompt')
+    const scopedPrompt = renderPrompt(await prompts.assemble({ scope: agentKey }))
+    const replyPolicy = readFileSync(new URL('../TERMINAL_REPLY.md', import.meta.url), 'utf8').trim()
+    const globalPrompt = renderPrompt(await prompts.assemble())
+    assert.equal(globalPrompt, 'You are an AI agent powered by DeepSeek Harness.\n\nExisting persona suffix.', 'the global prompt stays unchanged')
+    assert.equal(scopedPrompt, globalPrompt + (replyPolicy === '' ? '' : `\n\n${replyPolicy}`), 'the ask policy follows the existing persona suffix')
+    assert.equal(renderPrompt(await prompts.assemble({ scope: siblingKey })), globalPrompt, 'another agent does not inherit the policy')
     assert.deepEqual(stdout, ['Draft', ' complete', '\n'])
     assert.equal([...listeners.values()].flat().length, 0, 'runner releases all event subscriptions')
     const activity = stderr.join('')
@@ -261,6 +287,9 @@ test('runner streams dsh 0.2 assistant frames and keeps later activity on a sepa
     assert.match(activity, /\x1b\[1;93m▶ 执行 · bash \$ git status --short\x1b\[0m\n/)
     assert.ok(activity.indexOf('思考 · Checking again') < activity.indexOf('▶ 执行 · bash'))
   } finally {
+    await agentScope.dispose()
+    await siblingScope.dispose()
+    await promptPlugin.dispose()
     internals.stdout = previousStdout
     internals.stderr = previousStderr
     if (previousHome === undefined) delete process.env.DSH_HOME

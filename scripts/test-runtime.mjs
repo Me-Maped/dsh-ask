@@ -3,6 +3,7 @@
  * The provider is local and deterministic; no model requests leave this process tree.
  */
 import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -29,6 +30,8 @@ const requests = () => {
   try { return readFileSync(requestsPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) }
   catch (error) { if (error.code === 'ENOENT') return []; throw error }
 }
+const systemText = request => request.system.at(-1)?.content
+  .filter(block => block.type === 'text').map(block => block.text).join('') ?? ''
 function run(args, status = 0) {
   console.log(`Checking: dsh ${args.join(' ')}`)
   const result = spawnSync(process.execPath, [binary, ...args], {
@@ -52,6 +55,10 @@ try {
   }))
   // A fresh home has no exact-version exemptions. Installation must pass on its own.
   run(['plugin', '--profile', 'ask', 'add', archive])
+  const installedRoot = dirname(createRequire(join(profile, 'package.json')).resolve('@dsh-local/dsh-ask/package.json'))
+  const policyPath = join(installedRoot, 'TERMINAL_REPLY.md')
+  const originalPolicy = readFileSync(policyPath, 'utf8').trim()
+  assert.ok(originalPolicy, 'the package includes the editable reply policy')
   assert.match(ask('--help').stdout, /--session/)
   const patch = [
     ...['session-title-llm', 'llm-retry', 'credentials', 'authorization', 'deepseek-account',
@@ -67,15 +74,35 @@ try {
   const first = ask('FIRST')
   assert.equal(first.stdout, 'model=smoke; prompts=FIRST\n')
   assert.match(first.stderr, /Checking persisted history/)
+  assert.ok(systemText(requests().at(-1)).endsWith(originalPolicy), 'the actual model request includes the policy')
+  assert.equal(systemText(requests().at(-1)).split(originalPolicy).length - 1, 1, 'the policy is included once')
+  const updatedPolicy = 'Terminal reply smoke: keep {{literal}} unchanged.'
+  writeFileSync(policyPath, updatedPolicy)
   const second = ask('SECOND')
   assert.equal(second.stdout, 'model=smoke; prompts=FIRST|SECOND\n', 'another process restores durable history')
   assert.match(second.stderr, /resum/i)
+  assert.ok(systemText(requests().at(-1)).endsWith(updatedPolicy), 'a resumed session reads the updated literal policy')
+  assert.ok(!systemText(requests().at(-1)).includes(originalPolicy), 'the effective prompt does not retain the old policy')
   assert.equal(ask('--new', 'FRESH').stdout, 'model=smoke; prompts=FRESH\n')
+  assert.ok(systemText(requests().at(-1)).endsWith(updatedPolicy), 'new sessions also receive the updated policy')
   assert.equal(ask('--session', 'named', 'NAMED').stdout, 'model=smoke; prompts=NAMED\n')
   assert.equal(ask('--session', 'named', 'AGAIN').stdout, 'model=smoke; prompts=NAMED|AGAIN\n')
   ask('--model=alternate', '--effort=high')
   assert.equal(ask('--new', 'SWITCH').stdout, 'model=alternate; prompts=SWITCH\n')
   assert.equal(requests().at(-1).effort, 'high')
+  writeFileSync(policyPath, ' \n\t')
+  assert.equal(ask('--new', 'NO_POLICY').stdout, 'model=alternate; prompts=NO_POLICY\n')
+  assert.ok(!systemText(requests().at(-1)).includes(updatedPolicy), 'a blank policy removes the extra section')
+  rmSync(policyPath)
+  const beforeMissing = requests().length
+  ask('--help')
+  ask('--provider')
+  ask('--lang=en')
+  const missing = run(['--profile', 'ask', '--new', 'MISSING_POLICY'], 1)
+  assert.ok(missing.stderr.includes(policyPath), 'missing-policy errors identify the installed file')
+  assert.equal(missing.stdout, '')
+  assert.equal(requests().length, beforeMissing, 'missing policy fails before a model request')
+  writeFileSync(policyPath, originalPolicy)
   const failure = run(['--profile', 'ask', '--new', 'FAIL'], 1)
   assert.match(failure.stderr, /SMOKE_FAILURE.*intentional smoke failure/)
   const invalid = run(['--profile', 'ask', '--provider=does-not-exist'], 1)
@@ -85,7 +112,7 @@ try {
   assert.equal(defaults.model, 'alternate')
   assert.ok(files(join(home, 'sessions')).some(file => /\.jsonl(?:\.zstd)?$/.test(file)), 'real session logs were persisted')
   assert.ok(requests()[0].system.some(message => JSON.stringify(message).includes('coding agent powered by the smoke model')))
-  console.log('Runtime smoke passed: install without exemption, help, providers, defaults, streaming, persistence, resume, new/named sessions, model/effort, error exit.')
+  console.log('Runtime smoke passed: install, help, providers, defaults, streaming, persistence, new/resumed sessions, model/effort, packaged reply policy, literal updates, blank/missing policy, error exit.')
 } finally {
   rmSync(home, { recursive: true, force: true })
 }
