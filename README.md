@@ -6,9 +6,9 @@
 
 ## 运行时兼容性
 
-插件 `0.2.2` 面向 **dsh `0.2.1-rc.5`**，5 个 dsh 核心包的 peer 与开发依赖均固定到该版本；更早的 dsh（含 `0.2.1-rc.2` 与 `0.1.x`）不再声明支持。配套开发依赖仍为 Cordis `4.0.5`、plugin-loader `1.0.6` 和 Schemastery `3.18.5`，与 dsh `0.2.1-rc.5` 自带的版本一致。由于兼容范围发生变化，插件版本由 `0.2.1` 提升为 `0.2.2`，让依赖窗口的改动在版本号上可见。
+插件 `0.2.3` 声明兼容 **dsh `0.2.1-rc.5` 和 `0.2.2-rc.1`**。5 个 dsh 核心包的 peer 范围同时包含这两个运行时，避免 dsh 0.2.2-rc.1 在启动时把插件判为不兼容并跳过；开发依赖仍固定在 `0.2.1-rc.5`，供离线开发与类型检查使用。配套开发依赖仍为 Cordis `4.0.5`、plugin-loader `1.0.6` 和 Schemastery `3.18.5`。由于运行时兼容窗口扩大，插件版本由 `0.2.2` 提升为 `0.2.3`。
 
-实时回答与思考提示使用 `agent/assistant-stream`，持久会话仍通过 `session/event` 和 `sessions.flush()` 处理。升级其他 dsh 版本前，应重新核对接口并运行回归，而不是直接放宽兼容范围或启用版本豁免。
+实时回答与思考提示使用 `agent/assistant-stream`，持久会话仍通过 `session/event` 和 `sessions.flush()` 处理。`0.2.2-rc.1` 已按这组接口完成运行回归；升级其他 dsh 版本前，仍应重新核对接口并运行回归，而不是直接放宽兼容范围或启用版本豁免。
 
 ## 行为
 
@@ -223,7 +223,7 @@ Cordis 和 DSH 包保持为 peer dependencies，因此 profile 会为 bundle 提
 
 ```sh
 pnpm pack --pack-destination artifacts
-node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.2.tgz
+node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.3.tgz
 ```
 
 将第一个路径替换为本机 dsh 的 `package.json`（例如 `/usr/lib/node_modules/@deepseek-ai/dsh/package.json`）。测试安装可能需要访问 npm；测试目录结束后自动清理。

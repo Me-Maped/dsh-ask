@@ -1,6 +1,6 @@
 {
   "name": "@dsh-local/dsh-ask",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Lightweight terminal-scoped streaming ask mode for DeepSeek Harness",
   "license": "MIT",
   "private": true,
@@ -36,7 +36,7 @@
     "clean": "rimraf lib tsconfig.tsbuildinfo",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "pnpm run clean && tsc -p tsconfig.json && node scripts/copy-shell-templates.mjs && node -e \"import { chmodSync } from 'node:fs'; chmodSync('lib/bin/dsh-ask.js', 0o755)\"",
-    "test": "pnpm run build && node --test test/dsh-ask-cli.test.mjs test/progress.test.mjs test/terminal-reply.test.mjs",
+    "test": "pnpm run build && node --test test/dsh-ask-cli.test.mjs test/progress.test.mjs test/runtime-compatibility.test.mjs test/terminal-reply.test.mjs",
     "prepack": "pnpm run build"
   },
   "dsh": {
@@ -47,11 +47,11 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
     "@deepseek-ai/cordis-plugin-loader": "~1.0.6",
-    "@deepseek-ai/dsh-agent": "0.2.1-rc.5",
-    "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.5",
-    "@deepseek-ai/dsh-cmdline": "0.2.1-rc.5",
-    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
-    "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.5 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.5 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-cmdline": "0.2.1-rc.5 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.5 || 0.2.2-rc.1",
     "@deepseek-ai/schemastery": "~3.18.5"
   },
   "dependencies": {
