@@ -11,12 +11,12 @@ const corePackages = [
   '@deepseek-ai/dsh-session',
 ]
 
-test('declares compatibility with dsh 0.2.2-rc.1 core packages', () => {
+test('declares compatibility with dsh 0.2.2-rc.5 core packages', () => {
   for (const name of corePackages) {
     assert.equal(
       packageJson.peerDependencies[name],
-      '0.2.1-rc.5 || 0.2.2-rc.1',
-      `${name} must explicitly allow the installed dsh 0.2.2-rc.1 API cohort`,
+      '0.2.2-rc.5',
+      `${name} must explicitly allow the installed dsh 0.2.2-rc.5 API cohort`,
     )
   }
 })

@@ -14,7 +14,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createProgress, formatToolCall, type ActivityStyleConfig, type OutputStyle, type StatusStream } from './progress.js'
 import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import type { ModelSelectionRef } from '@deepseek-ai/dsh-agent'
+import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -291,7 +291,7 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
           ? defaultSelection.reasoningEffort
           : ReasoningEffortId(nextDefaults.effort)
         : undefined
-    const selection = {
+    const selection: ModelSelection = {
       provider: selectedProvider,
       model: requestModel,
       ...(selectedEffort === undefined ? {} : { reasoningEffort: selectedEffort }),
@@ -313,10 +313,14 @@ async function run(ctx: Context, config: Config, io: AskIo): Promise<void> {
       return
     }
     const replyPolicy = await loadTerminalReplyPolicy()
-    const agentOptions = { provider: selection.provider, model: selection.model }
-    const setup = (agentCtx: Context): void => {
-      const selected: ModelSelectionRef = { current: selection, assembled: undefined }
-      installModelSelection(agentCtx, selected)
+    // The route travels through agentOptions; setup re-records it so a resumed
+    // session follows this invocation's provider/model instead of its own last
+    // recorded selection. An omitted effort deliberately stays omitted so the
+    // adapter's default applies rather than the previous session's effort.
+    const agentOptions = { ...selection }
+    const setup = (agentCtx: Context, agent: Agent): void => {
+      agent.model.select(selection)
+      installModelSelection(agentCtx)
       if (replyPolicy !== '') {
         const systemPrompt = agentCtx.get('systemPrompt')
         if (systemPrompt === undefined) throw new Error('dsh-ask: systemPrompt service is required for terminal reply policy')

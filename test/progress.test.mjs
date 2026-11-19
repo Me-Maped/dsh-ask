@@ -227,8 +227,10 @@ test('runner streams dsh 0.2 assistant frames and keeps later activity on a sepa
   }
   let finish
   const exited = new Promise(resolve => { finish = resolve })
+  const recordedSelections = []
   const agent = {
     session,
+    model: { select(selection) { recordedSelections.push(selection) } },
     async whenIdle() {},
     followup(message) {
       assert.deepEqual(message.content, [{ type: 'text', text: 'test' }], 'user input stays unchanged')
@@ -252,7 +254,7 @@ test('runner streams dsh 0.2 assistant frames and keeps later activity on a sepa
       if (key === 'agents') return {
         async resume({ resumeSessionId }) { throw new Error(`session "${resumeSessionId}" not found`) },
         async create({ setup }) {
-          setup(agentScope.ctx)
+          setup(agentScope.ctx, agent)
           return { agent }
         },
       }
@@ -272,6 +274,7 @@ test('runner streams dsh 0.2 assistant frames and keeps later activity on a sepa
   try {
     apply(ctx, { task: 'test', fresh: false, explicitSession: 'stream-test', outputStyle: 'contrast' })
     assert.equal(await exited, 0)
+    assert.deepEqual(recordedSelections, [{ provider: 'test', model: 'test' }], 'setup records this invocation\'s route on the agent')
     const prompts = promptContext.get('systemPrompt')
     const scopedPrompt = renderPrompt(await prompts.assemble({ scope: agentKey }))
     const replyPolicy = readFileSync(new URL('../TERMINAL_REPLY.md', import.meta.url), 'utf8').trim()

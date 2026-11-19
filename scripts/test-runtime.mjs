@@ -15,7 +15,7 @@ assert.ok(runtimeArgument && archiveArgument, 'Pass the installed dsh package.js
 const runtime = resolve(runtimeArgument)
 const archive = resolve(archiveArgument)
 const metadata = JSON.parse(readFileSync(runtime, 'utf8'))
-assert.equal(metadata.version, '0.2.2-rc.1', 'This smoke suite targets the installed dsh 0.2.2-rc.1 runtime')
+assert.equal(metadata.version, '0.2.2-rc.5', 'This smoke suite targets the installed dsh 0.2.2-rc.5 runtime')
 const binary = resolve(dirname(runtime), typeof metadata.bin === 'string' ? metadata.bin : metadata.bin.dsh)
 const home = mkdtempSync(join(tmpdir(), 'dsh-ask-runtime-'))
 const profile = join(home, 'profiles', 'ask')
@@ -89,6 +89,10 @@ try {
   assert.equal(ask('--session', 'named', 'AGAIN').stdout, 'model=smoke; prompts=NAMED|AGAIN\n')
   ask('--model=alternate', '--effort=high')
   assert.equal(ask('--new', 'SWITCH').stdout, 'model=alternate; prompts=SWITCH\n')
+  assert.equal(requests().at(-1).effort, 'high')
+  // A resumed session follows this invocation's route, not its own recorded one,
+  // and the model-switch notice stays out of the user prompts.
+  assert.equal(ask('--session', 'named', 'SWITCHED').stdout, 'model=alternate; prompts=NAMED|AGAIN|SWITCHED\n')
   assert.equal(requests().at(-1).effort, 'high')
   writeFileSync(policyPath, ' \n\t')
   assert.equal(ask('--new', 'NO_POLICY').stdout, 'model=alternate; prompts=NO_POLICY\n')

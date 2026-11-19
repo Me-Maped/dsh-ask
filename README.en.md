@@ -6,9 +6,11 @@
 
 ## Runtime compatibility
 
-Plugin `0.2.3` declares compatibility with **dsh `0.2.1-rc.5` and `0.2.2-rc.1`**. The peer ranges for all five dsh core packages include both runtimes, so dsh 0.2.2-rc.1 no longer skips the bundle as incompatible. Development dependencies remain pinned to `0.2.1-rc.5` for offline development and type checking. Cordis remains `4.0.5`, plugin-loader `1.0.6`, and Schemastery `3.18.5`. Because the runtime window expanded, the plugin version moves from `0.2.2` to `0.2.3`.
+Plugin `0.2.4` declares compatibility with **dsh `0.2.2-rc.5`**. The peer ranges for all five dsh core packages now point exactly at `0.2.2-rc.5`, matching the current runtime; development dependencies are pinned to the same release, with Cordis `4.1.0`, plugin-loader `1.1.0`, and Schemastery `3.19.0`.
 
-Live answers and reasoning use `agent/assistant-stream`; durable session handling still uses `session/event` and `sessions.flush()`. The `0.2.2-rc.1` runtime has passed the regression suite for this interface cohort. Recheck interfaces and rerun regression tests before supporting another dsh version, rather than merely widening ranges or granting a version exemption.
+`0.2.2-rc.5` drops `ModelSelectionRef`: `installModelSelection(agentCtx)` now only installs the model-switch notice listener, the route travels in `agentOptions`, and setup records it with `agent.model.select()`. `dsh-ask` therefore passes provider, model, and effort together in `agentOptions` and re-records the invocation's selection on every ask, including resumed sessions, so a resumed conversation does not keep the previous model. An unspecified effort stays omitted and follows the provider default.
+
+Live answers and reasoning use `agent/assistant-stream`; durable session handling still uses `session/event` and `sessions.flush()`. The `0.2.2-rc.5` runtime has passed the regression suite for this interface cohort. Recheck interfaces and rerun regression tests before supporting another dsh version, rather than merely widening ranges or granting a version exemption.
 
 ## Behavior
 
@@ -206,11 +208,11 @@ pnpm run build
 The package keeps Cordis and DSH packages as peer dependencies so a profile supplies the same service instances used by the bundle. The [TypeScript maintenance notes](docs/typescript-comparison.md) document the source/artifact layout and supported validation commands.
 
 
-The runtime smoke test uses a temporary `DSH_HOME`, installs the packed artifact, and exercises persistence, resume, output, configuration, and error exits with a deterministic local provider. It makes no paid model requests:
+The runtime smoke test uses a temporary `DSH_HOME`, installs the packed artifact, and exercises persistence, resume, a model switch inside a resumed session, output, configuration, and error exits with a deterministic local provider. It makes no paid model requests:
 
 ```sh
 pnpm pack --pack-destination artifacts
-node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.3.tgz
+node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.4.tgz
 ```
 
 Replace the first path with the installed dsh `package.json` (for example, `/usr/lib/node_modules/@deepseek-ai/dsh/package.json`). Installation may need npm access. The temporary test home is removed afterward.

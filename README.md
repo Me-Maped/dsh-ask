@@ -6,9 +6,11 @@
 
 ## 运行时兼容性
 
-插件 `0.2.3` 声明兼容 **dsh `0.2.1-rc.5` 和 `0.2.2-rc.1`**。5 个 dsh 核心包的 peer 范围同时包含这两个运行时，避免 dsh 0.2.2-rc.1 在启动时把插件判为不兼容并跳过；开发依赖仍固定在 `0.2.1-rc.5`，供离线开发与类型检查使用。配套开发依赖仍为 Cordis `4.0.5`、plugin-loader `1.0.6` 和 Schemastery `3.18.5`。由于运行时兼容窗口扩大，插件版本由 `0.2.2` 提升为 `0.2.3`。
+插件 `0.2.4` 声明兼容 **dsh `0.2.2-rc.5`**。5 个 dsh 核心包的 peer 范围都精确指向 `0.2.2-rc.5`，与当前运行时一致；开发依赖同样固定在 `0.2.2-rc.5`，配套 Cordis `4.1.0`、plugin-loader `1.1.0` 和 Schemastery `3.19.0`。
 
-实时回答与思考提示使用 `agent/assistant-stream`，持久会话仍通过 `session/event` 和 `sessions.flush()` 处理。`0.2.2-rc.1` 已按这组接口完成运行回归；升级其他 dsh 版本前，仍应重新核对接口并运行回归，而不是直接放宽兼容范围或启用版本豁免。
+`0.2.2-rc.5` 移除了 `ModelSelectionRef`：`installModelSelection(agentCtx)` 现在只安装“模型已切换”的提示监听，模型路由改由 `agentOptions` 携带，并在 setup 中用 `agent.model.select()` 记录。因此 `dsh-ask` 会把 provider、model 和 effort 一起放进 `agentOptions`，并在每次提问（包括恢复会话）时重新记录本次选择，避免恢复的会话沿用上一次的模型；未指定 effort 时该字段保持缺省，交由 provider 默认值处理。
+
+实时回答与思考提示使用 `agent/assistant-stream`，持久会话仍通过 `session/event` 和 `sessions.flush()` 处理。`0.2.2-rc.5` 已按这组接口完成运行回归；升级其他 dsh 版本前，仍应重新核对接口并运行回归，而不是直接放宽兼容范围或启用版本豁免。
 
 ## 行为
 
@@ -219,11 +221,11 @@ pnpm run build
 Cordis 和 DSH 包保持为 peer dependencies，因此 profile 会为 bundle 提供同一组服务实例。关于源码/构建产物布局及验证命令，请见 [TypeScript 维护说明](docs/typescript-comparison.md)。
 
 
-真实运行时回归使用临时 `DSH_HOME`，安装打包产物后通过本地确定性 provider 验证会话恢复、输出、配置和错误退出，不发送付费模型请求：
+真实运行时回归使用临时 `DSH_HOME`，安装打包产物后通过本地确定性 provider 验证会话恢复、恢复会话时的模型切换、输出、配置和错误退出，不发送付费模型请求：
 
 ```sh
 pnpm pack --pack-destination artifacts
-node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.3.tgz
+node scripts/test-runtime.mjs /path/to/dsh/package.json artifacts/dsh-local-dsh-ask-0.2.4.tgz
 ```
 
 将第一个路径替换为本机 dsh 的 `package.json`（例如 `/usr/lib/node_modules/@deepseek-ai/dsh/package.json`）。测试安装可能需要访问 npm；测试目录结束后自动清理。
